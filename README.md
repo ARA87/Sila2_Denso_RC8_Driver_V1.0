@@ -57,43 +57,6 @@ Configure the IP address, port, and timeout in the test client before running.
 
 Start your SiLA 2 server (driver) before running the client.
 
-Example in test_client.py:
-
-python
-Copy
-Edit
-import asyncio
-
-async def main():
-    client = YourSilaClient()  # adjust with actual client class
-    await client.connect(host="192.168.0.1", port=6500)
-
-    # Example command calls
-    await client.DensoRC8Control.Start()
-    await client.DensoRC8Control.SetSValue(Index=53, Value="123")
-    value = await client.DensoRC8Control.GetSValue(Index=53)
-    print(f"S53 value: {value}")
-
-asyncio.run(main())
-Usage Example
-python
-Copy
-Edit
-from driver.denso_rc8_controller import DensoRC8Controller
-
-controller = DensoRC8Controller()
-controller.configure_connection(ip="192.168.0.1", port=5007, timeout=2000)
-controller.start()
-
-# Set value of S53
-controller.set_s_value(53, "123")
-
-# Read value of S53
-value = controller.get_s_value(53)
-print(f"S53: {value}")
-Logging
-The log file denso_rc8.log is created in the project directory and contains important actions and error messages.
-
 License
 MIT License
 
