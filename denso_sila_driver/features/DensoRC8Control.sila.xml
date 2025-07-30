@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Feature xmlns="http://www.sila-standard.org"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://www.sila-standard.org FeatureDefinition.xsd"
+         SiLA2Version="1.1"
+         FeatureVersion="1.0"
+         Originator="densorobotics.europe"
+         Locale="en-US"
+         MaturityLevel="Draft">
+
+  <Identifier>DensoRC8Control</Identifier>
+  <DisplayName>Denso RC8 Control</DisplayName>
+  <Description>Control a Denso RC8 robot using BCAP over pybcapclient.</Description>
+
+  <Command>
+    <Identifier>ConfigureConnection</Identifier>
+    <DisplayName>Configure Connection</DisplayName>
+    <Description>Configure the robot connection before starting.</Description>
+    <Observable>No</Observable>
+    <Parameter>
+      <Identifier>IPAddress</Identifier>
+      <DisplayName>IP Address</DisplayName>
+      <Description>IP address of the RC8 controller</Description>
+      <DataType>
+        <Basic>String</Basic>
+      </DataType>
+    </Parameter>
+    <Parameter>
+      <Identifier>Port</Identifier>
+      <DisplayName>Port</DisplayName>
+      <Description>Port number for the BCAP server</Description>
+      <DataType>
+        <Basic>Integer</Basic>
+      </DataType>
+    </Parameter>
+    <Parameter>
+      <Identifier>Timeout</Identifier>
+      <DisplayName>Timeout</DisplayName>
+      <Description>Timeout for BCAP connection (ms)</Description>
+      <DataType>
+        <Basic>Integer</Basic>
+      </DataType>
+    </Parameter>
+  </Command>
+
+  <Command>
+    <Identifier>Start</Identifier>
+    <DisplayName>Start Connection</DisplayName>
+    <Description>Establish the BCAP connection to the RC8 controller.</Description>
+    <Observable>No</Observable>
+  </Command>
+
+  <Command>
+    <Identifier>SetSValue</Identifier>
+    <DisplayName>Set S Value</DisplayName>
+    <Description>Write a value into the S10 variable.</Description>
+    <Observable>No</Observable>
+    <Parameter>
+      <Identifier>Index</Identifier>
+      <DisplayName>Index</DisplayName>
+      <Description>index of the S Variable</Description>
+      <DataType>
+        <Basic>Integer</Basic>
+      </DataType>
+    </Parameter>
+    <Parameter>
+      <Identifier>Value</Identifier>
+      <DisplayName>Value</DisplayName>
+      <Description>Value to write to S10</Description>
+      <DataType>
+        <Basic>String</Basic>
+      </DataType>
+    </Parameter>
+  </Command>
+
+  <Command>
+    <Identifier>GetSValue</Identifier>
+    <DisplayName>Get S Value</DisplayName>
+    <Description>Read the current value from the S variable.</Description>
+    <Observable>No</Observable>
+    <Parameter>
+      <Identifier>Index</Identifier>
+      <DisplayName>Index</DisplayName>
+      <Description>index of the s variable</Description>
+      <DataType>
+        <Basic>Integer</Basic>
+      </DataType>
+    </Parameter>
+    <Response>
+      <Identifier>Value</Identifier>
+      <DisplayName>Value</DisplayName>
+      <Description>Current value of S</Description>
+      <DataType>
+        <Basic>String</Basic>
+      </DataType>
+    </Response>
+  </Command>
+
+</Feature>
