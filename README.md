@@ -5,7 +5,7 @@ This driver implements a SiLA 2 interface for controlling a Denso RC8 robot via 
 ## Features
 
 - Connects to the Denso RC8 robot using fixed IP address and port
-- Read and write S-variables (e.g., S10 to S48)
+- Read and write Global Controller-variables (e.g., String, Float Integer, Position, Joint,Vector)
 - Start and control robot tasks (e.g., task "Pro1")
 - Error handling with ORiN exceptions
 - Logs all actions and errors to `denso_rc8.log`
