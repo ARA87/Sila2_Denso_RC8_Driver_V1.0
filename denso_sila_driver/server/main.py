@@ -5,7 +5,7 @@ import os
 import uuid
 import asyncio
 
-# 📌 Projektwurzel berechnen und zum sys.path hinzufügen (für lokale Importe wie driver/, implementation/)
+
 base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if base_path not in sys.path:
     sys.path.insert(0, base_path)
