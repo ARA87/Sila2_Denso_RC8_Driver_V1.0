@@ -26,9 +26,9 @@ pip install sila2
 Add the pybcapclient library manually, e.g., place it as a local Python file in your project folder.
 
 TLS Certificate
-The driver uses a self-signed TLS certificate for secure communication between the SiLA 2 client and server.
+The driver uses a TLS certificate for communication between the SiLA 2 client and server, for testing purposes you can use a self signed.
 
-Included Certificate
+Included test Certificate
 The project includes a default self-signed certificate located in the certs/ folder (server.crt and server.key).
 
 This certificate is used by the SiLA 2 server for TLS encryption.
