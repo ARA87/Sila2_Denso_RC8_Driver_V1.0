@@ -40,32 +40,32 @@ class DensoRC8Controller:
                 option=''
             )
 
-            # S-Variablen
+            # S-Variables
             count_s_vars = 48
             self.S = {i: self.bcap.controller_getvariable(self.h_ctrl, f"S{i}", '') for i in range(count_s_vars)}
             logging.info("Verbindung gestartet: %d S-Variablen geladen.", count_s_vars)
 
-            # I-Variablen
+            # I-Variables
             count_i_vars = 98
             self.I = {i: self.bcap.controller_getvariable(self.h_ctrl, f"I{i}", '') for i in range(count_i_vars)}
             logging.info("Verbindung gestartet: %d I-Variablen geladen.", count_i_vars)
 
-            # F-Variablen
+            # F-Variables
             count_f_vars = 98
             self.F = {i: self.bcap.controller_getvariable(self.h_ctrl, f"F{i}", '') for i in range(count_f_vars)}
             logging.info("Verbindung gestartet: %d F-Variablen geladen.", count_f_vars)
 
-            # P-Variablen
+            # P-Variables
             count_p_vars = 98
             self.P = {i: self.bcap.controller_getvariable(self.h_ctrl, f"P{i}", '') for i in range(count_p_vars)}
             logging.info("Verbindung gestartet: %d P-Variablen geladen.", count_p_vars)
             
-            # J-Variablen
+            # J-Variables
             count_j_vars = 98
             self.J = {i: self.bcap.controller_getvariable(self.h_ctrl, f"J{i}", '') for i in range(count_j_vars)}
             logging.info("Verbindung gestartet: %d J-Variablen geladen.", count_j_vars)
 
-            # V-Variablen
+            # V-Variables
             count_v_vars = 48
             self.V = {i: self.bcap.controller_getvariable(self.h_ctrl, f"V{i}", '') for i in range(count_v_vars)}
             logging.info("Verbindung gestartet: %d J-Variablen geladen.", count_j_vars)
@@ -94,7 +94,7 @@ class DensoRC8Controller:
         logging.info("retval")
         return retval
 
-    # --- S-Werte ---
+    # --- S-Values ---
     def set_s_value(self, Index: int, value: str):
         if self.S is None or Index not in self.S:
             raise RuntimeError(f"S{Index} not initialized. Call start() first.")
@@ -108,7 +108,7 @@ class DensoRC8Controller:
         logging.info("S%d gelesen: %s", Index, retval)
         return retval
 
-    # --- I-Werte ---
+    # --- I-Values ---
     def set_I_value(self, Index: int, value: int):
         if self.I is None or Index not in self.I:
             raise RuntimeError(f"I{Index} not initialized. Call start() first.")
@@ -122,7 +122,7 @@ class DensoRC8Controller:
         logging.info("I%d gelesen: %s", Index, retval)
         return retval
 
-    # --- F-Werte ---
+    # --- F-Values ---
     def set_F_value(self, Index: int, value: float):
         if self.F is None or Index not in self.F:
             raise RuntimeError(f"F{Index} not initialized. Call start() first.")
@@ -136,7 +136,7 @@ class DensoRC8Controller:
         logging.info("F%d gelesen: %s", Index, retval)
         return retval
 
-    # --- P-Werte (Liste von Float) ---
+    # --- P-Values (List from Float) ---
     def set_P_value(self, Index: int, value: List[float]):
         if self.P is None or Index not in self.P:
             raise RuntimeError(f"P{Index} not initialized. Call start() first.")
@@ -151,7 +151,7 @@ class DensoRC8Controller:
         logging.info("P%d gelesen: %s", Index, retval)
         return retval
         
-    # --- J-Werte (Liste von Float) ---
+    # --- J-Values (List from Float) ---
     def set_J_value(self, Index: int, value: List[float]):
         if self.J is None or Index not in self.J:
             raise RuntimeError(f"J{Index} not initialized. Call start() first.")
@@ -166,7 +166,7 @@ class DensoRC8Controller:
         logging.info("J%d gelesen: %s", Index, retval)
         return retval        
 
-    # --- V-Werte (Liste von Float) ---
+    # --- V-Values (List from Float) ---
     def set_V_value(self, Index: int, value: List[float]):
         if self.V is None or Index not in self.V:
             raise RuntimeError(f"V{Index} not initialized. Call start() first.")
@@ -181,14 +181,14 @@ class DensoRC8Controller:
         logging.info("J%d gelesen: %s", Index, retval)
         return retval        
         
-    # --- Programm hinzufügen ---
+    # --- Add Programm  ---
     def get_program(self, program_name: str):
         self.h_task = self.bcap.controller_gettask(self.h_ctrl, program_name, "")
         if not self.h_task:
             raise RuntimeError(f"Konnte Task für Programm '{program_name}' nicht abrufen")
         logging.info("Programm '%s' hinzugefügt", program_name)
 
-    # --- Programm starten ---
+    # --- start Programm ---
     def start_program(self, program_name: str, mode: str):
         mode_map = {"one_cycle": 1, "continuous": 2, "step_forward": 3}
         if mode not in mode_map:
@@ -196,7 +196,7 @@ class DensoRC8Controller:
         self.bcap.task_start(self.h_task, mode_map[mode], "")
         logging.info("Programm '%s' gestartet im Modus '%s'", program_name, mode)
 
-    # --- Programm stoppen ---
+    # --- stop Programm ---
     def stop_program(self, program_name: str, mode: str):
         mode_map = {"default_stop": 0, "instant_stop": 1, "step_stop": 2, "cycle_stop": 3}
         if mode not in mode_map:
@@ -205,7 +205,7 @@ class DensoRC8Controller:
         logging.info("Programm '%s' gestoppt im Modus '%s'", program_name, mode)
 
 
-    # --- Fehlerbeschreibung ---
+    # --- Error_Handling ---
     def _log_error_description(self):
         if not self.h_ctrl:
             logging.warning("Kein Controller-Handle für Fehlerbeschreibung.")
