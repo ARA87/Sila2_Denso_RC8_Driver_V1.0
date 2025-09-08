@@ -15,7 +15,7 @@ driver_path = os.path.join(base_path, "driver")
 if driver_path not in sys.path:
     sys.path.insert(0, driver_path)
 
-# 📦Imports nach Pfadkorrektur
+# Imports
 from sila2.server import SilaServer
 from sila2.framework.feature import Feature
 from implementation.denso_rc8_feature_impl import DensoRC8Feature
@@ -26,7 +26,7 @@ async def main():
     feature_path = os.path.join(base_path, "features", "DensoRC8Control.sila.xml")
     feature = Feature(feature_path)
 
-    # Create SiLA2-Server erzeugen
+    # Create SiLA2-Server
     server = SilaServer(
         server_name="DensoRC8",
         server_type="RobotController",
@@ -64,3 +64,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
