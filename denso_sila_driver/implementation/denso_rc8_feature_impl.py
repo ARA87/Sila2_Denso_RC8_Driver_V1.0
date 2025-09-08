@@ -18,42 +18,42 @@ class DensoRC8Feature(FeatureImplementationBase):
     def Start(self, *, metadata):
         self.controller.start()
 
-    # --- S-Variablen ---
+    # --- S-Variables ---
     def SetSValue(self, Index: int, Value: str, *, metadata):
         self.controller.set_s_value(Index=Index, value=Value)
 
     def GetSValue(self, Index: int, *, metadata) -> str:
         return self.controller.get_s_value(Index=Index)
 
-    # --- I-Variablen ---
+    # --- I-Variables ---
     def SetIValue(self, Index: int, Value: int, *, metadata):
         self.controller.set_I_value(Index=Index, value=Value)
 
     def GetIValue(self, Index: int, *, metadata) -> int:
         return self.controller.get_I_value(Index=Index)
 
-    # --- F-Variablen ---
+    # --- F-Variables ---
     def SetFValue(self, Index: int, Value: float, *, metadata):
         self.controller.set_F_value(Index=Index, value=Value)
 
     def GetFValue(self, Index: int, *, metadata) -> float:
         return self.controller.get_F_value(Index=Index)
 
-    # --- P-Variablen ---
+    # --- P-Variables ---
     def SetPValue(self, Index: int, Value: List[float], *, metadata):
         self.controller.set_P_value(Index=Index, value=Value)
 
     def GetPValue(self, Index: int, *, metadata) -> List[float]:
         return self.controller.get_P_value(Index=Index)
         
-    # --- J-Variablen ---
+    # --- J-Variables ---
     def SetJValue(self, Index: int, Value: List[float], *, metadata):
         self.controller.set_J_value(Index=Index, value=Value)
 
     def GetJValue(self, Index: int, *, metadata) -> List[float]:
         return self.controller.get_J_value(Index=Index)
 
-    # --- V-Variablen ---
+    # --- V-Variables ---
     def SetVValue(self, Index: int, Value: List[float], *, metadata):
         self.controller.set_V_value(Index=Index, value=Value)
 
@@ -64,7 +64,7 @@ class DensoRC8Feature(FeatureImplementationBase):
     def GetPosValue(self, *, metadata) -> List[float]:
         return self.controller.get_pos_value()
 
-    # --- Programm hinzufügen ---
+    # --- Add Programm  ---
     def GetProgram(self, ProgramName: str, *, metadata):
         try:
             self.controller.get_program(program_name=ProgramName)
@@ -78,7 +78,7 @@ class DensoRC8Feature(FeatureImplementationBase):
             raise UndefinedExecutionError(f"ORiNException {e} - Controller-Fehler: {err_desc}")
 
 
-    # --- Programm starten ---
+    # --- start Programm ---
     def StartProgram(self, ProgramName: str, Mode: str, *, metadata):
         try:
             self.controller.start_program(program_name=ProgramName, mode=Mode)
@@ -91,7 +91,7 @@ class DensoRC8Feature(FeatureImplementationBase):
                 logging.warning(f"Fehler beim Auslesen von @ERROR_DESCRIPTION: {exc}")
             raise UndefinedExecutionError(f"ORiNException {e} - Controller-Fehler: {err_desc}")
 
-    # --- Programm stoppen ---
+    # --- stop Programm ---
     def StopProgram(self, ProgramName: str, Mode: str, *, metadata):
         try:
             self.controller.stop_program(program_name=ProgramName, mode=Mode)
@@ -108,8 +108,8 @@ class DensoRC8Feature(FeatureImplementationBase):
     # --- Lifecycle Hooks ---
     def start(self):
         super().start()
-        print("🟢 Feature DensoRC8 gestartet")
+        print("🟢 Feature DensoRC8 started")
 
     def stop(self):
-        print("🔴 Feature DensoRC8 gestoppt")
+        print("🔴 Feature DensoRC8 stopped")
         super().stop()
