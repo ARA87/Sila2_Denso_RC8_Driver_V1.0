@@ -26,22 +26,68 @@ Add the pybcapclient library manually, e.g., place it as a local Python file in 
 
 TLS Certificate
 The driver uses a TLS certificate for communication between the SiLA 2 client and server, for testing purposes you can use a self signed.
+The server expects cert.pem and key.pem. There are two ways to provide them:
+Option A — Provide paths via CLI (recommended)
+python -m sila_driver.denso_rc8_server --ip-address 0.0.0.0 --port 50052 ^
+  -c "C:\path\to\cert.pem" -k "C:\path\to\key.pem"
 
-Included test Certificate
-The project includes a default self-signed certificate located in the certs/ folder (server.crt and server.key).
+Option B — Place files where the server looks by default
 
-This certificate is used by the SiLA 2 server for TLS encryption.
+Put the files in one of these locations inside the package:
 
-Generating a New Self-Signed Certificate
-If you want to generate a new certificate, you can do so with OpenSSL:
+...\sila_driver\denso_rc8_server\cert.pem and key.pem, or
 
-bash
-Copy
-Edit
-openssl req -x509 -newkey rsa:4096 -keyout server.key -out server.crt -days 365 -nodes
-When prompted, fill in the details (Country, Organization, Common Name, etc.).
+...\sila_driver\denso_rc8_server\server\cert.pem and key.pem
 
-Place the generated server.key and server.crt files in the certs/ folder or update your server configuration to point to their location.
+If no certificate/key can be found, the server will refuse to start in secure mode and tell you where it looked.
+
+(Optional) Quick self-signed certificate with OpenSSL
+
+Create a minimal config with proper SubjectAltName (adjust the host IP):
+
+@"
+[ req ]
+distinguished_name = dn
+x509_extensions = v3_req
+prompt = no
+
+[ dn ]
+CN = DensoRC8
+
+[ v3_req ]
+subjectAltName = @alt_names
+
+[ alt_names ]
+DNS.1 = localhost
+IP.1  = 127.0.0.1
+IP.2  = 192.168.0.10   # <-- replace with your host IP
+"@ | Out-File -Encoding ascii .\openssl.cnf
+
+
+Generate cert & key:
+
+openssl req -x509 -newkey rsa:2048 -days 365 -nodes ^
+  -keyout key.pem -out cert.pem -config openssl.cnf
+
+
+For production, prefer certificates issued by your organization’s CA.
+
+Start the Server
+Secure (recommended), bind to all interfaces
+python -m sila_driver.denso_rc8_server --ip-address 0.0.0.0 --port 50052 ^
+  -c "C:\path\to\cert.pem" -k "C:\path\to\key.pem"
+
+
+Expected output:
+
+✅ SiLA server 'DensoRC8' listening on 0.0.0.0:50052 (secure=True)
+
+
+Notes
+
+On first run with 0.0.0.0, Windows may prompt for Firewall access—allow it.
+
+Clients should connect using the host’s LAN IP (e.g., 192.168.x.y:50052), not 127.0.0.1.
 
 Running the Test Client
 You can test the driver functionality using the included test client script:
