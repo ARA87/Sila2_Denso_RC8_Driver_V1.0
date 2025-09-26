@@ -1,0 +1,272 @@
+syntax = "proto3";
+
+import "SiLAFramework.proto";
+
+package sila2.densorobotics.europe.none.densorc8control.v1;
+
+/* Control a Denso RC8 robot using BCAP over pybcapclient. */
+service DensoRC8Control {
+  /* Configure the robot connection before starting. */
+  rpc ConfigureConnection (sila2.densorobotics.europe.none.densorc8control.v1.ConfigureConnection_Parameters) returns (sila2.densorobotics.europe.none.densorc8control.v1.ConfigureConnection_Responses) {}
+  /* Establish the BCAP connection to the RC8 controller. */
+  rpc Start (sila2.densorobotics.europe.none.densorc8control.v1.Start_Parameters) returns (sila2.densorobotics.europe.none.densorc8control.v1.Start_Responses) {}
+  /* Write a value into the S10 variable. */
+  rpc SetSValue (sila2.densorobotics.europe.none.densorc8control.v1.SetSValue_Parameters) returns (sila2.densorobotics.europe.none.densorc8control.v1.SetSValue_Responses) {}
+  /* Read the current value from the S variable. */
+  rpc GetSValue (sila2.densorobotics.europe.none.densorc8control.v1.GetSValue_Parameters) returns (sila2.densorobotics.europe.none.densorc8control.v1.GetSValue_Responses) {}
+  /* Write a value into the global Integer variable. */
+  rpc SetIValue (sila2.densorobotics.europe.none.densorc8control.v1.SetIValue_Parameters) returns (sila2.densorobotics.europe.none.densorc8control.v1.SetIValue_Responses) {}
+  /* Read the current value from the I variable. */
+  rpc GetIValue (sila2.densorobotics.europe.none.densorc8control.v1.GetIValue_Parameters) returns (sila2.densorobotics.europe.none.densorc8control.v1.GetIValue_Responses) {}
+  /* Write a value into the IO variable. */
+  rpc SetIOValue (sila2.densorobotics.europe.none.densorc8control.v1.SetIOValue_Parameters) returns (sila2.densorobotics.europe.none.densorc8control.v1.SetIOValue_Responses) {}
+  /* Read the current value from the IO variable. */
+  rpc GetIOValue (sila2.densorobotics.europe.none.densorc8control.v1.GetIOValue_Parameters) returns (sila2.densorobotics.europe.none.densorc8control.v1.GetIOValue_Responses) {}
+  /* Write a value into the global Float variable. */
+  rpc SetFValue (sila2.densorobotics.europe.none.densorc8control.v1.SetFValue_Parameters) returns (sila2.densorobotics.europe.none.densorc8control.v1.SetFValue_Responses) {}
+  /* Read the current value from the F variable. */
+  rpc GetFValue (sila2.densorobotics.europe.none.densorc8control.v1.GetFValue_Parameters) returns (sila2.densorobotics.europe.none.densorc8control.v1.GetFValue_Responses) {}
+  /* Clears the current error on the RC8 controller. */
+  rpc ClearError (sila2.densorobotics.europe.none.densorc8control.v1.ClearError_Parameters) returns (sila2.densorobotics.europe.none.densorc8control.v1.ClearError_Responses) {}
+  /* Write a value into the global Position variable. */
+  rpc SetPValue (sila2.densorobotics.europe.none.densorc8control.v1.SetPValue_Parameters) returns (sila2.densorobotics.europe.none.densorc8control.v1.SetPValue_Responses) {}
+  /* Read the current value from the P variable. */
+  rpc GetPValue (sila2.densorobotics.europe.none.densorc8control.v1.GetPValue_Parameters) returns (sila2.densorobotics.europe.none.densorc8control.v1.GetPValue_Responses) {}
+  /* Write a value into the global Joint variable. */
+  rpc SetJValue (sila2.densorobotics.europe.none.densorc8control.v1.SetJValue_Parameters) returns (sila2.densorobotics.europe.none.densorc8control.v1.SetJValue_Responses) {}
+  /* Read the current value from the J variable. */
+  rpc GetJValue (sila2.densorobotics.europe.none.densorc8control.v1.GetJValue_Parameters) returns (sila2.densorobotics.europe.none.densorc8control.v1.GetJValue_Responses) {}
+  /* Write a value into the global Vector variable. */
+  rpc SetVValue (sila2.densorobotics.europe.none.densorc8control.v1.SetVValue_Parameters) returns (sila2.densorobotics.europe.none.densorc8control.v1.SetVValue_Responses) {}
+  /* Read the current value from the Vector variable. */
+  rpc GetVValue (sila2.densorobotics.europe.none.densorc8control.v1.GetVValue_Parameters) returns (sila2.densorobotics.europe.none.densorc8control.v1.GetVValue_Responses) {}
+  /* Read the current position from the Robot */
+  rpc GetPosValue (sila2.densorobotics.europe.none.densorc8control.v1.GetPosValue_Parameters) returns (sila2.densorobotics.europe.none.densorc8control.v1.GetPosValue_Responses) {}
+  /* Start a robot program with mode selection and observe execution status. */
+  rpc StartProgram (sila2.densorobotics.europe.none.densorc8control.v1.StartProgram_Parameters) returns (sila2.org.silastandard.CommandConfirmation) {}
+  /* Monitor the state of StartProgram */
+  rpc StartProgram_Info (sila2.org.silastandard.CommandExecutionUUID) returns (stream sila2.org.silastandard.ExecutionInfo) {}
+  /* Retrieve result of StartProgram */
+  rpc StartProgram_Result(sila2.org.silastandard.CommandExecutionUUID) returns (sila2.densorobotics.europe.none.densorc8control.v1.StartProgram_Responses) {}
+  /* Stop a robot program with mode selection. */
+  rpc StopProgram (sila2.densorobotics.europe.none.densorc8control.v1.StopProgram_Parameters) returns (sila2.densorobotics.europe.none.densorc8control.v1.StopProgram_Responses) {}
+  /* Get Programs. */
+  rpc GetProgram (sila2.densorobotics.europe.none.densorc8control.v1.GetProgram_Parameters) returns (sila2.densorobotics.europe.none.densorc8control.v1.GetProgram_Responses) {}
+  /* State of task execution: 0=NON_EXISTENT, 1=Hold-stopped, 2=Stopped, 3=Running, 4=Step-stopped */
+  rpc Subscribe_STATUS (sila2.densorobotics.europe.none.densorc8control.v1.Subscribe_STATUS_Parameters) returns (stream sila2.densorobotics.europe.none.densorc8control.v1.Subscribe_STATUS_Responses) {}
+}
+
+/* Parameters for ConfigureConnection */
+message ConfigureConnection_Parameters {
+  sila2.org.silastandard.String IPAddress = 1;  /* IP address of the RC8 controller */
+  sila2.org.silastandard.Integer Port = 2;  /* Port number for the BCAP server */
+  sila2.org.silastandard.Integer Timeout = 3;  /* Timeout for BCAP connection (ms) */
+}
+
+/* Responses of ConfigureConnection */
+message ConfigureConnection_Responses {
+}
+
+/* Parameters for Start */
+message Start_Parameters {
+}
+
+/* Responses of Start */
+message Start_Responses {
+}
+
+/* Parameters for SetSValue */
+message SetSValue_Parameters {
+  sila2.org.silastandard.Integer Index = 1;  /* index of the S Variable */
+  sila2.org.silastandard.String Value = 2;  /* Value to write to S10 */
+}
+
+/* Responses of SetSValue */
+message SetSValue_Responses {
+}
+
+/* Parameters for GetSValue */
+message GetSValue_Parameters {
+  sila2.org.silastandard.Integer Index = 1;  /* index of the s variable */
+}
+
+/* Responses of GetSValue */
+message GetSValue_Responses {
+  sila2.org.silastandard.String Value = 1;  /* Current value of S */
+}
+
+/* Parameters for SetIValue */
+message SetIValue_Parameters {
+  sila2.org.silastandard.Integer Index = 1;  /* index of the I Variable */
+  sila2.org.silastandard.Integer Value = 2;  /* Value to write to Global Integer */
+}
+
+/* Responses of SetIValue */
+message SetIValue_Responses {
+}
+
+/* Parameters for GetIValue */
+message GetIValue_Parameters {
+  sila2.org.silastandard.Integer Index = 1;  /* index of the I variable */
+}
+
+/* Responses of GetIValue */
+message GetIValue_Responses {
+  sila2.org.silastandard.Integer Value = 1;  /* Current value of I */
+}
+
+/* Parameters for SetIOValue */
+message SetIOValue_Parameters {
+  sila2.org.silastandard.Integer Index = 1;  /* index of the IO Variable */
+  sila2.org.silastandard.Integer Value = 2;  /* Value to write to IO */
+}
+
+/* Responses of SetIOValue */
+message SetIOValue_Responses {
+}
+
+/* Parameters for GetIOValue */
+message GetIOValue_Parameters {
+  sila2.org.silastandard.Integer Index = 1;  /* index of the IO variable */
+}
+
+/* Responses of GetIOValue */
+message GetIOValue_Responses {
+  sila2.org.silastandard.Integer Value = 1;  /* Current value of IO */
+}
+
+/* Parameters for SetFValue */
+message SetFValue_Parameters {
+  sila2.org.silastandard.Integer Index = 1;  /* index of the F Variable */
+  sila2.org.silastandard.Real Value = 2;  /* Value to write to Global Float Variable */
+}
+
+/* Responses of SetFValue */
+message SetFValue_Responses {
+}
+
+/* Parameters for GetFValue */
+message GetFValue_Parameters {
+  sila2.org.silastandard.Integer Index = 1;  /* index of the F variable */
+}
+
+/* Responses of GetFValue */
+message GetFValue_Responses {
+  sila2.org.silastandard.Real Value = 1;  /* Current value of F */
+}
+
+/* Parameters for ClearError */
+message ClearError_Parameters {
+}
+
+/* Responses of ClearError */
+message ClearError_Responses {
+}
+
+/* Parameters for SetPValue */
+message SetPValue_Parameters {
+  sila2.org.silastandard.Integer Index = 1;  /* index of the P Variable */
+  repeated sila2.org.silastandard.Real Value = 2;  /* Value to write to Global Position Variable */
+}
+
+/* Responses of SetPValue */
+message SetPValue_Responses {
+}
+
+/* Parameters for GetPValue */
+message GetPValue_Parameters {
+  sila2.org.silastandard.Integer Index = 1;  /* index of the P variable */
+}
+
+/* Responses of GetPValue */
+message GetPValue_Responses {
+  repeated sila2.org.silastandard.Real Value = 1;  /* Current value of P */
+}
+
+/* Parameters for SetJValue */
+message SetJValue_Parameters {
+  sila2.org.silastandard.Integer Index = 1;  /* index of the J Variable */
+  repeated sila2.org.silastandard.Real Value = 2;  /* Value to write to Global Joint Variable */
+}
+
+/* Responses of SetJValue */
+message SetJValue_Responses {
+}
+
+/* Parameters for GetJValue */
+message GetJValue_Parameters {
+  sila2.org.silastandard.Integer Index = 1;  /* index of the J variable */
+}
+
+/* Responses of GetJValue */
+message GetJValue_Responses {
+  repeated sila2.org.silastandard.Real Value = 1;  /* Current value of J */
+}
+
+/* Parameters for SetVValue */
+message SetVValue_Parameters {
+  sila2.org.silastandard.Integer Index = 1;  /* index of the V Variable */
+  repeated sila2.org.silastandard.Real Value = 2;  /* Value to write to Global Vector Variable */
+}
+
+/* Responses of SetVValue */
+message SetVValue_Responses {
+}
+
+/* Parameters for GetVValue */
+message GetVValue_Parameters {
+  sila2.org.silastandard.Integer Index = 1;  /* index of the V variable */
+}
+
+/* Responses of GetVValue */
+message GetVValue_Responses {
+  repeated sila2.org.silastandard.Real Value = 1;  /* Current value of V */
+}
+
+/* Parameters for GetPosValue */
+message GetPosValue_Parameters {
+}
+
+/* Responses of GetPosValue */
+message GetPosValue_Responses {
+  repeated sila2.org.silastandard.Real Value = 1;  /* Current Position */
+}
+
+/* Parameters for StartProgram */
+message StartProgram_Parameters {
+  sila2.org.silastandard.String ProgramName = 1;  /* Name of the program to start (e.g., Pro1) */
+  sila2.org.silastandard.String Mode = 2;  /* Execution mode: one_cycle, continuous, or step_forward */
+}
+
+/* Responses of StartProgram */
+message StartProgram_Responses {
+  sila2.org.silastandard.String Status = 1;  /* Program execution status: Running, Completed, Error */
+}
+
+/* Parameters for StopProgram */
+message StopProgram_Parameters {
+  sila2.org.silastandard.String ProgramName = 1;  /* Name of the program to stop (e.g., Pro1) */
+  sila2.org.silastandard.String Mode = 2;  /* Stop mode: 0=Default,1=Instant,2=Step,3=Cyclestop,4=Initialized */
+}
+
+/* Responses of StopProgram */
+message StopProgram_Responses {
+}
+
+/* Parameters for GetProgram */
+message GetProgram_Parameters {
+  sila2.org.silastandard.String ProgramName = 1;  /* Name of the program to query (e.g., Pro1) */
+}
+
+/* Responses of GetProgram */
+message GetProgram_Responses {
+}
+
+/* Parameters for STATUS */
+message Subscribe_STATUS_Parameters {
+}
+
+/* Responses of STATUS */
+message Subscribe_STATUS_Responses {
+  sila2.org.silastandard.Integer STATUS = 1;  /* State of task execution: 0=NON_EXISTENT, 1=Hold-stopped, 2=Stopped, 3=Running, 4=Step-stopped */
+}
