@@ -1,0 +1,21 @@
+[project]
+name = "denso_rc8_server"
+version = "0.0.0"
+requires-python = ">=3.8"
+dependencies = [
+    "sila2",
+    "typer",
+]
+
+[build-system]
+requires = ["setuptools>=61.0.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["denso_rc8_server*"]
+
+[tool.setuptools.package-data]
+"denso_rc8_server.generated" = [
+    "*/*.sila.xml",
+    "*/*.proto",
+]
