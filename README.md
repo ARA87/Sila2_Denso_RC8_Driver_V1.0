@@ -27,7 +27,8 @@ Add the pybcapclient library manually, e.g., place it as a local Python file in 
 TLS Certificate
 The driver uses a TLS certificate for communication between the SiLA 2 client and server, for testing purposes you can use a self signed.
 The server expects cert.pem and key.pem. There are two ways to provide them:
-Option A — Provide paths via CLI (recommended)
+
+Option A — Provide paths via CLI 
 python -m sila_driver.denso_rc8_server --ip-address 0.0.0.0 --port 50052 ^
   -c "C:\path\to\cert.pem" -k "C:\path\to\key.pem"
 
