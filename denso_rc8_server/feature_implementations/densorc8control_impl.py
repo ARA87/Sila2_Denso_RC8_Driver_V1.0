@@ -93,14 +93,14 @@ class DensoRC8ControlImpl(DensoRC8ControlBase):
     - STATUS-Observable mit aktivem Push
     - StartProgram: kein internes Timeout; @STATUS wird überwacht, bis Endzustand
     - JEDE ORiNException wird zentral in Klartext übersetzt (HRESULT + GetErrorDescription + RC8-ErrorStack)
+    - Bei Abbruch (Exception/Cancel) wird der RC8-Task automatisch gestoppt
     """
 
     def __init__(self, parent_server: Server) -> None:
         super().__init__(parent_server=parent_server)
         self.controller = DensoRC8Controller()
 
-        # Lebensdauer der Observable-Instanz großzügig setzen (hier: 7 Tage)
-        # => verhindert, dass der Server die Instanz vorzeitig beendet.
+        # Lebensdauer der Observable-Instanz großzügig setzen (hier: 365 Tage)
         self.StartProgram_default_lifetime_of_execution = timedelta(days=365)
 
         # last published STATUS (for initial push)
@@ -276,7 +276,8 @@ class DensoRC8ControlImpl(DensoRC8ControlBase):
         """
         Startet ein Programm, überwacht @STATUS und beendet die Observable-Instanz sauber.
         KEIN internes Timeout – die Schleife läuft, bis ein Endzustand erreicht ist
-        (oder die SiLA-Instanz-Lifetime abläuft, z. B. nach 7 Tagen).
+        (oder die SiLA-Instanz-Lifetime abläuft, z. B. nach 365 Tagen).
+        Bei Abbruch (Exception/Cancel) wird der RC8-Task automatisch gestoppt.
         """
         instance.begin_execution()
 
@@ -297,9 +298,8 @@ class DensoRC8ControlImpl(DensoRC8ControlBase):
         # Start
         self.controller.start_program(program_name=ProgramName, mode=Mode)
 
-        # Monitoring-Loop (ohne hartes Timeout)
+        # Monitoring-Loop (ohne hartes Timeout, ohne Progress-Prozent)
         poll_dt = 0.1
-        progress = 0.0
         confirm_needed = 3
         confirm_count = 0
         last_cur = None
@@ -317,58 +317,76 @@ class DensoRC8ControlImpl(DensoRC8ControlBase):
                 pass
             return ""
 
-        while True:
-            try:
-                cur = int(self.controller.bcap.variable_getvalue(status_handle))
-            except Exception:
-                time.sleep(poll_dt)
-                continue
-
-            if cur == STATUS_RUNNING:
-                if progress < 0.95:
-                    progress = min(0.95, progress + 0.05)
+        # Helper: optional Cancel-Erkennung (best effort; je nach Server vorhanden)
+        def _is_cancelled(inst: ObservableCommandInstance) -> bool:
+            for attr in ("is_cancelled", "is_canceled", "cancelled", "canceled", "is_cancel_requested"):
+                if hasattr(inst, attr):
                     try:
-                        instance.progress = progress
+                        if bool(getattr(inst, attr)):
+                            return True
                     except Exception:
                         pass
-                confirm_count = 0
-                last_cur = cur
+            return False
 
-            elif cur in END_STATES:
-                if cur == last_cur:
-                    confirm_count += 1
-                else:
-                    confirm_count = 1
+        completed_ok = False
+        try:
+            while True:
+                # Falls Server/Client den Observable abbricht
+                if _is_cancelled(instance):
+                    raise UndefinedExecutionError(f"StartProgram '{ProgramName}' cancelled by client")
+
+                try:
+                    cur = int(self.controller.bcap.variable_getvalue(status_handle))
+                except Exception:
+                    time.sleep(poll_dt)
+                    continue
+
+                if cur == STATUS_RUNNING:
+                    # kein Progress-Update mehr
+                    confirm_count = 0
                     last_cur = cur
 
-                if confirm_count >= confirm_needed:
-                    try:
-                        instance.progress = 1.0
-                    except Exception:
-                        pass
+                elif cur in END_STATES:
+                    if cur == last_cur:
+                        confirm_count += 1
+                    else:
+                        confirm_count = 1
+                        last_cur = cur
 
-                    # (A) Controller-Text einmalig prüfen
-                    err_txt = _read_error_description_once()
-                    if err_txt:
-                        raise UndefinedExecutionError(f"Program '{ProgramName}' failed: {err_txt}")
+                    if confirm_count >= confirm_needed:
+                        # (A) Controller-Text einmalig prüfen
+                        err_txt = _read_error_description_once()
+                        if err_txt:
+                            raise UndefinedExecutionError(f"Program '{ProgramName}' failed: {err_txt}")
 
-                    # (B) RC8-ErrorStack prüfen
-                    has_err, msg = self._read_rc8_error_stack()
-                    if has_err:
-                        raise UndefinedExecutionError(f"Program '{ProgramName}' failed: {msg}")
+                        # (B) RC8-ErrorStack prüfen
+                        has_err, msg = self._read_rc8_error_stack()
+                        if has_err:
+                            raise UndefinedExecutionError(f"Program '{ProgramName}' failed: {msg}")
 
-                    if cur == STATUS_STOPPED:
-                        return StartProgram_Responses(Status="Completed")
-                    if cur == STATUS_STEP_STOPPED:
-                        return StartProgram_Responses(Status="Completed(Step)")
-                    if cur == STATUS_HOLD_STOPPED:
-                        return StartProgram_Responses(Status="HoldStopped")
+                        # Normales Ende
+                        if cur == STATUS_STOPPED:
+                            completed_ok = True
+                            return StartProgram_Responses(Status="Completed")
+                        if cur == STATUS_STEP_STOPPED:
+                            completed_ok = True
+                            return StartProgram_Responses(Status="Completed(Step)")
+                        if cur == STATUS_HOLD_STOPPED:
+                            completed_ok = True
+                            return StartProgram_Responses(Status="HoldStopped")
 
-            else:
-                confirm_count = 0
-                last_cur = cur
+                else:
+                    confirm_count = 0
+                    last_cur = cur
 
-            time.sleep(poll_dt)
+                time.sleep(poll_dt)
+        finally:
+            # Task stoppen, wenn nicht regulär beendet (Fehler/Cancel/Abbruch)
+            if not completed_ok:
+                try:
+                    self.controller.stop_program(program_name=ProgramName, mode="default_stop")
+                except Exception:
+                    pass
 
     # ---------------------- Observable Property Hook ----------------------
 
@@ -468,4 +486,3 @@ class DensoRC8ControlImpl(DensoRC8ControlBase):
     def stop(self):
         print("🔴 Feature DensoRC8 stopped")
         super().stop()
-
