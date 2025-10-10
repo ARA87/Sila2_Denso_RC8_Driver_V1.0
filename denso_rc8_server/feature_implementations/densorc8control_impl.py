@@ -101,7 +101,7 @@ class DensoRC8ControlImpl(DensoRC8ControlBase):
 
         # Lebensdauer der Observable-Instanz großzügig setzen (hier: 7 Tage)
         # => verhindert, dass der Server die Instanz vorzeitig beendet.
-        self.StartProgram_default_lifetime_of_execution = timedelta(days=7)
+        self.StartProgram_default_lifetime_of_execution = timedelta(days=365)
 
         # last published STATUS (for initial push)
         self._last_status: Optional[int] = None
@@ -468,3 +468,4 @@ class DensoRC8ControlImpl(DensoRC8ControlBase):
     def stop(self):
         print("🔴 Feature DensoRC8 stopped")
         super().stop()
+
