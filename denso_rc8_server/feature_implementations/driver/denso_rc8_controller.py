@@ -1,41 +1,53 @@
 import logging
-from typing import List, Dict, Optional
+import threading
+from typing import List, Dict, Optional, Any
+
 try:
-    from .pybcapclient import bcapclient  
+    from .pybcapclient import bcapclient
     from .pybcapclient.orinexception import ORiNException
 except ImportError:
-    
     import pybcapclient.bcapclient as bcapclient
     from pybcapclient.orinexception import ORiNException
 
 
 class DensoRC8Controller:
+
+
+    # ---- Konstanten ----
+    _STATUS_VAR = "@STATUS"
+    _ERR_CODE_VAR = "@ERROR_CODE"
+    _ERR_DESC_VAR = "@ERROR_DESCRIPTION"
+    _CUR_POS_VAR = "@CURRENT_POSITION"
+
     def __init__(self):
+        # Verbindungs-Parameter
         self.ip: Optional[str] = None
         self.port: Optional[int] = None
         self.timeout: Optional[int] = None
 
-        self.bcap = None
-        self.h_ctrl = None
-        self.h_task = None  
+        # b-CAP Objekte
+        self.bcap: Optional[bcapclient.BCAPClient] = None
+        self.h_ctrl: Any = None
+        self.Robot: Any = None
 
-        # Global Variable-Handles
-        self.IO = None
-        self.S = None
-        self.I = None
-        self.F = None
-        self.P = None
-        self.J = None
-        self.V = None
+        # Lazy-Cache für Variablenhandles
+        # z.B. self._var_cache["IO"][1] -> Handle für "IO1"
+        self._var_cache: Dict[str, Dict[int, Any]] = {
+            "IO": {}, "S": {}, "I": {}, "F": {}, "P": {}, "J": {}, "V": {}
+        }
 
-        # Robot/Position
-        self.Robot = None
-        self.Pos = None
+        # Positionshandle (lazy)
+        self._pos_handle: Any = None
 
-        # --- observable STATUS-Property / Multi-Task ---
-        self.task_handles: Dict[str, object] = {}
-        self.task_status_vars: Dict[str, object] = {}
+        # Task- / Status-Handles
+        self.task_handles: Dict[str, Any] = {}
+        self.task_status_vars: Dict[str, Any] = {}
         self.current_program_name: Optional[str] = None
+
+        # Thread-Schutz für Lazy-Caches
+        self._lock = threading.RLock()
+
+    # ---------------------- Verbindung ----------------------
 
     def configure_connection(self, ip: str, port: int, timeout: int):
         self.ip = ip
@@ -43,12 +55,17 @@ class DensoRC8Controller:
         self.timeout = timeout
 
     def start(self):
+        """
+        Baut NUR die b-CAP Verbindung + Controller-Handle auf.
+        KEIN Preload von Variablen/Roboter/Position (alles lazy).
+        """
         if not all([self.ip, self.port, self.timeout]):
             raise RuntimeError("Connection not configured. Call configure_connection() first.")
         try:
             self.bcap = bcapclient.BCAPClient(host=self.ip, port=self.port, timeout=self.timeout)
             self.bcap.service_start('')
 
+            # Provider/Machine/Option wie in deinem bisherigen Setup (unverändert):
             self.h_ctrl = self.bcap.controller_connect(
                 name='',
                 provider='CaoProv.DENSO.VRC',
@@ -56,47 +73,7 @@ class DensoRC8Controller:
                 option=''
             )
 
-            # IO variables
-            count_io_vars = 500
-            self.IO = {i: self.bcap.controller_getvariable(self.h_ctrl, f"IO{i}", '') for i in range(count_io_vars)}
-            logging.info("Connection started: %d IO variables loaded.", count_io_vars)
-
-            # S variables
-            count_s_vars = 48
-            self.S = {i: self.bcap.controller_getvariable(self.h_ctrl, f"S{i}", '') for i in range(count_s_vars)}
-            logging.info("Connection started: %d S variables loaded.", count_s_vars)
-
-            # I variables
-            count_i_vars = 98
-            self.I = {i: self.bcap.controller_getvariable(self.h_ctrl, f"I{i}", '') for i in range(count_i_vars)}
-            logging.info("Connection started: %d I variables loaded.", count_i_vars)
-
-            # F variables
-            count_f_vars = 98
-            self.F = {i: self.bcap.controller_getvariable(self.h_ctrl, f"F{i}", '') for i in range(count_f_vars)}
-            logging.info("Connection started: %d F variables loaded.", count_f_vars)
-
-            # P variables
-            count_p_vars = 98
-            self.P = {i: self.bcap.controller_getvariable(self.h_ctrl, f"P{i}", '') for i in range(count_p_vars)}
-            logging.info("Connection started: %d P variables loaded.", count_p_vars)
-
-            # J variables
-            count_j_vars = 98
-            self.J = {i: self.bcap.controller_getvariable(self.h_ctrl, f"J{i}", '') for i in range(count_j_vars)}
-            logging.info("Connection started: %d J variables loaded.", count_j_vars)
-
-            # V variables
-            count_v_vars = 48
-            self.V = {i: self.bcap.controller_getvariable(self.h_ctrl, f"V{i}", '') for i in range(count_v_vars)}
-            logging.info("Connection started: %d V variables loaded.", count_v_vars)
-
-            # Robot
-            self.Robot = self.bcap.controller_getrobot(self.h_ctrl, "Arm", "")
-
-            # Current position
-            self.Pos = self.bcap.robot_getvariable(self.Robot, "@CURRENT_POSITION", '')
-            logging.info("Connection started: Current position handle loaded.")
+            logging.info("Connection started (lazy handle mode).")
 
         except ORiNException as e:
             logging.error(f"ORiNException during startup: {e}")
@@ -107,237 +84,281 @@ class DensoRC8Controller:
             self._log_error_description()
             raise
 
-    # --- Position ---
+    # ---------------------- Lazy Helpers ----------------------
+
+    def _require(self):
+        if self.bcap is None or self.h_ctrl is None:
+            raise RuntimeError("Controller not started. Call start() first.")
+
+    def _get_robot(self):
+        """
+        Lazy: holt bei Bedarf das Robot-Handle 'Arm'.
+        """
+        self._require()
+        with self._lock:
+            if self.Robot is None:
+                self.Robot = self.bcap.controller_getrobot(self.h_ctrl, "Arm", "")
+                logging.info("Robot handle resolved lazily.")
+            return self.Robot
+
+    def _get_pos_handle(self):
+        """
+        Lazy: holt bei Bedarf das Positionshandle @CURRENT_POSITION.
+        """
+        self._require()
+        with self._lock:
+            if self._pos_handle is None:
+                robot = self._get_robot()
+                self._pos_handle = self.bcap.robot_getvariable(robot, self._CUR_POS_VAR, '')
+                logging.info("@CURRENT_POSITION handle resolved lazily.")
+            return self._pos_handle
+
+    def _get_var_handle(self, prefix: str, index: int):
+        """
+        Lazy: holt bei Bedarf ein Variablenhandle (IO/S/I/F/P/J/V).
+        """
+        self._require()
+        if prefix not in self._var_cache:
+            raise ValueError(f"Unsupported variable prefix '{prefix}'")
+        with self._lock:
+            cache = self._var_cache[prefix]
+            h = cache.get(index)
+            if h is None:
+                name = f"{prefix}{index}"
+                h = self.bcap.controller_getvariable(self.h_ctrl, name, '')
+                cache[index] = h
+                logging.debug("Handle for %s cached.", name)
+            return h
+
+    # ---------------------- Position ----------------------
+
     def get_pos_value(self) -> List[float]:
-        if self.Pos is None:
-            raise RuntimeError("Position not initialized")
-        retval = self.bcap.variable_getvalue(self.Pos)
+        h = self._get_pos_handle()
+        retval = self.bcap.variable_getvalue(h)
         logging.info("Current position read: %s", retval)
         return retval
 
-    # --- S values ---
+    # ---------------------- S values ----------------------
+
     def set_s_value(self, Index: int, value: str):
-        if self.S is None or Index not in self.S:
-            raise RuntimeError(f"S{Index} not initialized. Call start() first.")
-        self.bcap.variable_putvalue(self.S[Index], value)
+        h = self._get_var_handle("S", Index)
+        self.bcap.variable_putvalue(h, value)
         logging.info("S%d set to: %s", Index, value)
 
     def get_s_value(self, Index: int) -> str:
-        if self.S is None or Index not in self.S:
-            raise RuntimeError(f"S{Index} not initialized. Call start() first.")
-        retval = self.bcap.variable_getvalue(self.S[Index])
+        h = self._get_var_handle("S", Index)
+        retval = self.bcap.variable_getvalue(h)
         logging.info("S%d read: %s", Index, retval)
         return retval
 
-    # --- I values ---
+    # ---------------------- I values ----------------------
+
     def set_I_value(self, Index: int, value: int):
-        if self.I is None or Index not in self.I:
-            raise RuntimeError(f"I{Index} not initialized. Call start() first.")
-        self.bcap.variable_putvalue(self.I[Index], value)
+        h = self._get_var_handle("I", Index)
+        self.bcap.variable_putvalue(h, value)
         logging.info("I%d set to: %s", Index, value)
 
     def get_I_value(self, Index: int) -> int:
-        if self.I is None or Index not in self.I:
-            raise RuntimeError(f"I{Index} not initialized. Call start() first.")
-        retval = self.bcap.variable_getvalue(self.I[Index])
+        h = self._get_var_handle("I", Index)
+        retval = self.bcap.variable_getvalue(h)
         logging.info("I%d read: %s", Index, retval)
         return retval
 
-    # --- IO values ---
+    # ---------------------- IO values ----------------------
+
     def set_IO_value(self, Index: int, value: int):
-        if self.IO is None or Index not in self.IO:
-            raise RuntimeError(f"IO{Index} not initialized. Call start() first.")
-        self.bcap.variable_putvalue(self.IO[Index], value)
+        h = self._get_var_handle("IO", Index)
+        self.bcap.variable_putvalue(h, value)
         logging.info("IO%d set to: %s", Index, value)
 
     def get_IO_value(self, Index: int) -> int:
-        if self.IO is None or Index not in self.IO:
-            raise RuntimeError(f"IO{Index} not initialized. Call start() first.")
-        retval = self.bcap.variable_getvalue(self.IO[Index])
+        h = self._get_var_handle("IO", Index)
+        retval = self.bcap.variable_getvalue(h)
         logging.info("IO%d read: %s", Index, retval)
         return retval
 
-    # --- F values ---
+    # ---------------------- F values ----------------------
+
     def set_F_value(self, Index: int, value: float):
-        if self.F is None or Index not in self.F:
-            raise RuntimeError(f"F{Index} not initialized. Call start() first.")
-        self.bcap.variable_putvalue(self.F[Index], value)
+        h = self._get_var_handle("F", Index)
+        self.bcap.variable_putvalue(h, value)
         logging.info("F%d set to: %s", Index, value)
 
     def get_F_value(self, Index: int) -> float:
-        if self.F is None or Index not in self.F:
-            raise RuntimeError(f"F{Index} not initialized. Call start() first.")
-        retval = self.bcap.variable_getvalue(self.F[Index])
+        h = self._get_var_handle("F", Index)
+        retval = self.bcap.variable_getvalue(h)
         logging.info("F%d read: %s", Index, retval)
         return retval
 
-    # --- P values (List of floats) ---
+    # ---------------------- P values (List of floats) ----------------------
+
     def set_P_value(self, Index: int, value: List[float]):
-        if self.P is None or Index not in self.P:
-            raise RuntimeError(f"P{Index} not initialized. Call start() first.")
-        self.bcap.variable_putvalue(self.P[Index], value)
+        h = self._get_var_handle("P", Index)
+        self.bcap.variable_putvalue(h, value)
         logging.info("P%d set to: %s", Index, value)
 
     def get_P_value(self, Index: int) -> List[float]:
-        if self.P is None or Index not in self.P:
-            raise RuntimeError(f"P{Index} not initialized. Call start() first.")
-        retval = self.bcap.variable_getvalue(self.P[Index])
+        h = self._get_var_handle("P", Index)
+        retval = self.bcap.variable_getvalue(h)
         logging.info("P%d read: %s", Index, retval)
         return retval
 
-    # --- J values (List of floats) ---
+    # ---------------------- J values (List of floats) ----------------------
+
     def set_J_value(self, Index: int, value: List[float]):
-        if self.J is None or Index not in self.J:
-            raise RuntimeError(f"J{Index} not initialized. Call start() first.")
-        self.bcap.variable_putvalue(self.J[Index], value)
+        h = self._get_var_handle("J", Index)
+        self.bcap.variable_putvalue(h, value)
         logging.info("J%d set to: %s", Index, value)
 
     def get_J_value(self, Index: int) -> List[float]:
-        if self.J is None or Index not in self.J:
-            raise RuntimeError(f"J{Index} not initialized. Call start() first.")
-        retval = self.bcap.variable_getvalue(self.J[Index])
+        h = self._get_var_handle("J", Index)
+        retval = self.bcap.variable_getvalue(h)
         logging.info("J%d read: %s", Index, retval)
         return retval
 
-    # --- V values (List of floats) ---
+    # ---------------------- V values (List of floats) ----------------------
+
     def set_V_value(self, Index: int, value: List[float]):
-        if self.V is None or Index not in self.V:
-            raise RuntimeError(f"V{Index} not initialized. Call start() first.")
-        self.bcap.variable_putvalue(self.V[Index], value)
+        h = self._get_var_handle("V", Index)
+        self.bcap.variable_putvalue(h, value)
         logging.info("V%d set to: %s", Index, value)
 
     def get_V_value(self, Index: int) -> List[float]:
-        if self.V is None or Index not in self.V:
-            raise RuntimeError(f"V{Index} not initialized. Call start() first.")
-        retval = self.bcap.variable_getvalue(self.V[Index])
+        h = self._get_var_handle("V", Index)
+        retval = self.bcap.variable_getvalue(h)
         logging.info("V%d read: %s", Index, retval)
         return retval
 
+    # ---------------------- Programme / Tasks ----------------------
+
     def get_program(self, program_name: str):
         """
-        Robust: Reuse existing (validated) handles if possible,
-        otherwise resolve fresh and rebind @STATUS.
-        Prevents ORiNException -2147483131 ("Object already exists").
+        Handle + @STATUS binden, Cache nutzen. Keine weitere Vorab-Logik.
         """
-        
+        self._require()
         if program_name.lower().endswith(".pcs"):
             program_name = program_name[:-4]
 
-        
-        h_cached = self.task_handles.get(program_name)
-        v_cached = self.task_status_vars.get(program_name)
-        if h_cached and v_cached:
-            try:
-                # read @STATUS 
-                _ = self.bcap.variable_getvalue(v_cached)
-                
-                self.h_task = h_cached
-                self.current_program_name = program_name
-                logging.info("Program '%s' reused (validated cached handle + @STATUS).", program_name)
-                return
-            except Exception:
-                #  Cache is probably stale -> we will resolve it fresh
-                logging.info("Program '%s' cached handle seems stale, resolving fresh…", program_name)
+        with self._lock:
+            h_cached = self.task_handles.get(program_name)
+            v_cached = self.task_status_vars.get(program_name)
+            if h_cached and v_cached:
                 try:
-                    # Optional: ignore/overwrite old handle
-                    pass
+                    _ = self.bcap.variable_getvalue(v_cached)
+                    self.current_program_name = program_name
+                    logging.info("Program '%s' reused (cached).", program_name)
+                    return
                 except Exception:
-                    pass
+                    logging.info("Program '%s' cached handle stale -> resolve fresh", program_name)
 
-        # 2) Dissolve fresh
-        try:
-            h_task = self.bcap.controller_gettask(self.h_ctrl, program_name, "")
-            v_status = self.bcap.task_getvariable(h_task, "@STATUS", "")
-            if not v_status:
-                raise RuntimeError(f"Task '{program_name}' has no @STATUS variable.")
-
-            # update Cache  
-            self.task_handles[program_name] = h_task
-            self.task_status_vars[program_name] = v_status
-            self.h_task = h_task
-            self.current_program_name = program_name
-            logging.info("Program '%s' resolved fresh (handle + @STATUS).", program_name)
-            return
-
-        except ORiNException as e:
-            # -2147483131: "Object already exists" -> handle already exists
             try:
-                code = int(e.args[0])
-            except Exception:
-                code = None
+                h_task = self.bcap.controller_gettask(self.h_ctrl, program_name, "")
+                v_status = self.bcap.task_getvariable(h_task, self._STATUS_VAR, "")
+                if not v_status:
+                    raise RuntimeError(f"Task '{program_name}' has no {self._STATUS_VAR} variable.")
 
-            if code == -2147483131:
-                logging.info("ORiN -2147483131 for '%s': reusing existing handle if possible…", program_name)
-                # Try to use cache (even if validation above failed)
-                h_cached = self.task_handles.get(program_name)
-                v_cached = self.task_status_vars.get(program_name)
-                if h_cached and v_cached:
-                    try:
-                        _ = self.bcap.variable_getvalue(v_cached)  # last validation
-                        self.h_task = h_cached
-                        self.current_program_name = program_name
-                        logging.info("Program '%s' reused after ORiN -2147483131.", program_name)
-                        return
-                    except Exception:
-                        pass
-                # if cache unavailable -> ErrorMessage
-                logging.error("Could not reuse handle for '%s' after -2147483131.", program_name)
-                self._log_error_description()
-                raise
-            else:
-                logging.error("ORiNException while retrieving task '%s': %s", program_name, e)
+                self.task_handles[program_name] = h_task
+                self.task_status_vars[program_name] = v_status
+                self.current_program_name = program_name
+                logging.info("Program '%s' resolved fresh.", program_name)
+
+            except ORiNException as e:
+                # -2147483131: "Object already exists" -> versuchen, Cache zu nutzen
+                try:
+                    code = int(e.args[0])
+                except Exception:
+                    code = None
+                if code == -2147483131:
+                    h_cached = self.task_handles.get(program_name)
+                    v_cached = self.task_status_vars.get(program_name)
+                    if h_cached and v_cached:
+                        try:
+                            _ = self.bcap.variable_getvalue(v_cached)
+                            self.current_program_name = program_name
+                            logging.info("Program '%s' reused after -2147483131.", program_name)
+                            return
+                        except Exception:
+                            pass
                 self._log_error_description()
                 raise
 
     def start_program(self, program_name: str, mode: str):
         """
-        Startet den Task zum angegebenen Programm. Nutzt das passende Handle.
+        Startet den Task (Handle muss existieren / wird via get_program() geholt).
         """
+        self._require()
         mode_map = {"one_cycle": 1, "continuous": 2, "step_forward": 3}
         if mode not in mode_map:
             raise ValueError(f"Invalid Modus: {mode}. Erlaubt: {list(mode_map.keys())}")
 
-        # Handle 
         if program_name not in self.task_handles:
             self.get_program(program_name)
 
         handle = self.task_handles[program_name]
-        self.h_task = handle
         self.current_program_name = program_name
-
         self.bcap.task_start(handle, mode_map[mode], "")
         logging.info("Programm '%s' gestartet im Modus '%s'", program_name, mode)
 
+        # @STATUS ggf. nachziehen (falls vorher nicht vorhanden)
+        if program_name not in self.task_status_vars:
+            try:
+                v_status = self.bcap.task_getvariable(handle, self._STATUS_VAR, "")
+                self.task_status_vars[program_name] = v_status
+            except Exception:
+                pass
+
     def stop_program(self, program_name: str, mode: str):
-        """
-        Stoppt den Task. Nutzt das passende Handle.
-        """
+        self._require()
         mode_map = {"default_stop": 0, "instant_stop": 1, "step_stop": 2, "cycle_stop": 3}
         if mode not in mode_map:
             raise ValueError(f"Invalid Mode: {mode}. allowed: {list(mode_map.keys())}")
 
-        # Handle 
         if program_name not in self.task_handles:
             self.get_program(program_name)
 
         handle = self.task_handles[program_name]
-        self.h_task = handle
         self.current_program_name = program_name
-
         self.bcap.task_stop(handle, mode_map[mode], "")
-        logging.info("Programm '%s' stopeed in Mode '%s'", program_name, mode)
+        logging.info("Programm '%s' stopped in Mode '%s'", program_name, mode)
 
-    # --- Error Handling ---
+    # ---------------------- Fehler-Utilities ----------------------
+
     def _log_error_description(self):
-        if not self.h_ctrl:
-            logging.warning("No Controller-Handle for Error Message.")
-            return
+        """
+        Liest @ERROR_DESCRIPTION (Best Effort).
+        """
         try:
-            err_var = self.bcap.controller_getvariable(self.h_ctrl, "@ERROR_DESCRIPTION", "")
-            err_msg = self.bcap.variable_getvalue(err_var)
-            if err_msg:
-                logging.error("RC8 @ERROR_DESCRIPTION: %s", err_msg)
+            if not self.h_ctrl:
+                logging.warning("No Controller-Handle for Error Message.")
+                return
+            h_desc = self.bcap.controller_getvariable(self.h_ctrl, self._ERR_DESC_VAR, "")
+            msg = self.bcap.variable_getvalue(h_desc)
+            if msg:
+                logging.error("RC8 %s: %s", self._ERR_DESC_VAR, msg)
             else:
-                logging.warning("No @ERROR_DESCRIPTION.")
+                logging.debug("No %s available.", self._ERR_DESC_VAR)
         except Exception as e:
-            logging.warning("Error while reading @ERROR_DESCRIPTION: %s", e)
+            logging.debug("Error while reading %s: %s", self._ERR_DESC_VAR, e)
+
+    # ---------------------- Optional: Cache-Management ----------------------
+
+    def invalidate_variable_cache(self, prefix: Optional[str] = None):
+        """
+        Löscht den Cache für Variablenhandles (z. B. nach Controller-Reset).
+        """
+        with self._lock:
+            if prefix is None:
+                for k in self._var_cache:
+                    self._var_cache[k].clear()
+            else:
+                if prefix in self._var_cache:
+                    self._var_cache[prefix].clear()
+
+    def invalidate_program_cache(self, program_name: Optional[str] = None):
+        with self._lock:
+            if program_name is None:
+                self.task_handles.clear()
+                self.task_status_vars.clear()
+            else:
+                self.task_handles.pop(program_name, None)
+                self.task_status_vars.pop(program_name, None)
