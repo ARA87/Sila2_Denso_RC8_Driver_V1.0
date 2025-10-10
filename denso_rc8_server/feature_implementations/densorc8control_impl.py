@@ -4,11 +4,32 @@ from __future__ import annotations
 import logging
 import time
 from datetime import timedelta
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, List, Optional, Tuple, Callable, Any, TypeVar, cast
+from functools import wraps
 
 from sila2.server import MetadataDict, ObservableCommandInstance
 from sila2.framework.errors.undefined_execution_error import UndefinedExecutionError
-from .pybcapclient.orinexception import ORiNException
+
+# --- Robust: ORiNException aus beiden möglichen Pfaden importieren ---
+_ORIN_TYPES: tuple = ()
+try:
+    # Pfad A: wie vom Controller benutzt
+    from .driver.pybcapclient.orinexception import ORiNException as ORiN_A  # type: ignore
+    _ORIN_TYPES = _ORIN_TYPES + (ORiN_A,)
+except Exception:
+    pass
+try:
+    # Pfad B: direkt unter feature_implementations
+    from .pybcapclient.orinexception import ORiNException as ORiN_B  # type: ignore
+    _ORIN_TYPES = _ORIN_TYPES + (ORiN_B,)
+except Exception:
+    pass
+
+def _is_orin_exception(exc: BaseException) -> bool:
+    if _ORIN_TYPES and isinstance(exc, _ORIN_TYPES):
+        return True
+    # Fallback, falls Modulpfade variieren: nach Klassenname prüfen
+    return exc.__class__.__name__ == "ORiNException"
 
 from .driver.denso_rc8_controller import DensoRC8Controller
 
@@ -48,12 +69,32 @@ STATUS_RUNNING = 3
 STATUS_STEP_STOPPED = 4
 END_STATES = {STATUS_HOLD_STOPPED, STATUS_STOPPED, STATUS_STEP_STOPPED}
 
+F = TypeVar("F", bound=Callable[..., Any])
+
+def catch_orin(ctx: str) -> Callable[[F], F]:
+    """
+    Dekorator: fängt JEDE Exception, prüft, ob es eine ORiNException ist
+    (egal aus welchem Modulpfad), und übersetzt sie andernfalls unverändert weiter.
+    """
+    def decorator(fn: F) -> F:
+        @wraps(fn)
+        def wrapper(self: "DensoRC8ControlImpl", *args, **kwargs):
+            try:
+                return fn(self, *args, **kwargs)
+            except Exception as e:  # bewusst breit gefasst
+                if _is_orin_exception(e):
+                    raise UndefinedExecutionError(self._format_orin_error(ctx, e))
+                # Nicht-ORiN-Fehler normal weiterreichen
+                raise
+        return cast(F, wrapper)
+    return decorator
+
 
 class DensoRC8ControlImpl(DensoRC8ControlBase):
     """
-    - Observable property STATUS with active push via update_STATUS(...)
-    - StartProgram waits (except in continuous mode) for program termination via @STATUS
-    - ORiN error -> UndefinedExecutionError (only if b-CAP throws)
+    - STATUS-Observable mit aktivem Push
+    - StartProgram: @STATUS erst NACH Start binden
+    - JEDE ORiNException wird zentral in Klartext übersetzt (HRESULT + GetErrorDescription + RC8-ErrorStack)
     """
 
     def __init__(self, parent_server: Server) -> None:
@@ -94,155 +135,149 @@ class DensoRC8ControlImpl(DensoRC8ControlBase):
 
     # ---------------------- Connection / Lifecycle ----------------------
 
+    @catch_orin("ConfigureConnection")
     def ConfigureConnection(
         self, IPAddress: str, Port: int, Timeout: int, *, metadata: MetadataDict
     ) -> ConfigureConnection_Responses:
         self.controller.configure_connection(ip=IPAddress, port=Port, timeout=Timeout)
         return ConfigureConnection_Responses()
 
+    @catch_orin("Start")
     def Start(self, *, metadata: MetadataDict) -> Start_Responses:
-        try:
-            self.controller.start()
-        except ORiNException as e:
-            self._raise_with_controller_error("Start", e)
+        self.controller.start()
         return Start_Responses()
 
     # ---------------------- IO-Variables ----------------------
 
+    @catch_orin("SetIOValue")
     def SetIOValue(self, Index: int, Value: int, *, metadata: MetadataDict) -> SetIOValue_Responses:
         self.controller.set_IO_value(Index=Index, value=Value)
         return SetIOValue_Responses()
 
+    @catch_orin("GetIOValue")
     def GetIOValue(self, Index: int, *, metadata: MetadataDict) -> GetIOValue_Responses:
         value = self.controller.get_IO_value(Index=Index)
         return GetIOValue_Responses(Value=value)
 
     # ---------------------- S-Variables ----------------------
 
+    @catch_orin("SetSValue")
     def SetSValue(self, Index: int, Value: str, *, metadata: MetadataDict) -> SetSValue_Responses:
         self.controller.set_s_value(Index=Index, value=Value)
         return SetSValue_Responses()
 
+    @catch_orin("GetSValue")
     def GetSValue(self, Index: int, *, metadata: MetadataDict) -> GetSValue_Responses:
         value = self.controller.get_s_value(Index=Index)
         return GetSValue_Responses(Value=value)
 
     # ---------------------- I-Variables ----------------------
 
+    @catch_orin("SetIValue")
     def SetIValue(self, Index: int, Value: int, *, metadata: MetadataDict) -> SetIValue_Responses:
         self.controller.set_I_value(Index=Index, value=Value)
         return SetIValue_Responses()
 
+    @catch_orin("GetIValue")
     def GetIValue(self, Index: int, *, metadata: MetadataDict) -> GetIValue_Responses:
         value = self.controller.get_I_value(Index=Index)
         return GetIValue_Responses(Value=value)
 
     # ---------------------- F-Variables ----------------------
 
+    @catch_orin("SetFValue")
     def SetFValue(self, Index: int, Value: float, *, metadata: MetadataDict) -> SetFValue_Responses:
         self.controller.set_F_value(Index=Index, value=Value)
         return SetFValue_Responses()
 
+    @catch_orin("GetFValue")
     def GetFValue(self, Index: int, *, metadata: MetadataDict) -> GetFValue_Responses:
         value = self.controller.get_F_value(Index=Index)
         return GetFValue_Responses(Value=value)
 
     # ---------------------- P-Variables ----------------------
 
+    @catch_orin("SetPValue")
     def SetPValue(self, Index: int, Value: List[float], *, metadata: MetadataDict) -> SetPValue_Responses:
         self.controller.set_P_value(Index=Index, value=Value)
         return SetPValue_Responses()
 
+    @catch_orin("GetPValue")
     def GetPValue(self, Index: int, *, metadata: MetadataDict) -> GetPValue_Responses:
         value = self.controller.get_P_value(Index=Index)
         return GetPValue_Responses(Value=value)
 
     # ---------------------- J-Variables ----------------------
 
+    @catch_orin("SetJValue")
     def SetJValue(self, Index: int, Value: List[float], *, metadata: MetadataDict) -> SetJValue_Responses:
         self.controller.set_J_value(Index=Index, value=Value)
         return SetJValue_Responses()
 
+    @catch_orin("GetJValue")
     def GetJValue(self, Index: int, *, metadata: MetadataDict) -> GetJValue_Responses:
         value = self.controller.get_J_value(Index=Index)
         return GetJValue_Responses(Value=value)
 
     # ---------------------- V-Variables ----------------------
 
+    @catch_orin("SetVValue")
     def SetVValue(self, Index: int, Value: List[float], *, metadata: MetadataDict) -> SetVValue_Responses:
         self.controller.set_V_value(Index=Index, value=Value)
         return SetVValue_Responses()
 
+    @catch_orin("GetVValue")
     def GetVValue(self, Index: int, *, metadata: MetadataDict) -> GetVValue_Responses:
         value = self.controller.get_V_value(Index=Index)
         return GetVValue_Responses(Value=value)
 
     # ---------------------- Position ----------------------
 
+    @catch_orin("GetPosValue")
     def GetPosValue(self, *, metadata: MetadataDict) -> GetPosValue_Responses:
         value = self.controller.get_pos_value()
         return GetPosValue_Responses(Value=value)
 
     # ---------------------- Program Control ----------------------
 
+    @catch_orin("GetProgram")
     def GetProgram(self, ProgramName: str, *, metadata: MetadataDict) -> GetProgram_Responses:
-        """    
-        Set up program handle + @STATUS and push initial STATUS
-        """
-        try:
-            self.controller.get_program(program_name=ProgramName)
-            setattr(self.controller, "current_program_name", ProgramName)
+        """Bindet Handle + @STATUS und pusht initialen STATUS."""
+        self.controller.get_program(program_name=ProgramName)
+        setattr(self.controller, "current_program_name", ProgramName)
 
-            # Initialen STATUS lesen & pushen
-            var_handle = self.controller.task_status_vars.get(ProgramName)
-            if var_handle:
-                try:
-                    cur = int(self.controller.bcap.variable_getvalue(var_handle))
-                    self._last_status = cur
-                    self.update_STATUS(cur)
-                except Exception as e:
-                    logging.debug("GetProgram: initial @STATUS read failed: %r", e)
+        var_handle = self.controller.task_status_vars.get(ProgramName)
+        if var_handle:
+            try:
+                cur = int(self.controller.bcap.variable_getvalue(var_handle))
+                self._last_status = cur
+                self.update_STATUS(cur)
+            except Exception as e:
+                logging.debug("GetProgram: initial @STATUS read failed: %r", e)
 
-            return GetProgram_Responses()
-        except ORiNException as e:
-            self._raise_with_controller_error("GetProgram", e)
+        return GetProgram_Responses()
 
+    @catch_orin("StopProgram")
     def StopProgram(self, ProgramName: str, Mode: str, *, metadata: MetadataDict) -> StopProgram_Responses:
-        try:
-            # Ensure handle (without poller side effect)
-            self.controller.get_program(program_name=ProgramName)
-            setattr(self.controller, "current_program_name", ProgramName)
-            self.controller.stop_program(program_name=ProgramName, mode=Mode)
-            return StopProgram_Responses()
-        except ORiNException as e:
-            self._raise_with_controller_error("StopProgram", e)
+        setattr(self.controller, "current_program_name", ProgramName)
+        self.controller.stop_program(program_name=ProgramName, mode=Mode)
+        return StopProgram_Responses()
 
-
+    @catch_orin("ClearError")
     def ClearError(self, *, metadata: MetadataDict) -> ClearError_Responses:
-        try:
-            self.controller.bcap.controller_execute(self.controller.h_ctrl, "ClearError")
-            return ClearError_Responses()
-        except ORiNException as e:
-            self._raise_with_controller_error("ClearError", e)
+        self.controller.bcap.controller_execute(self.controller.h_ctrl, "ClearError")
+        return ClearError_Responses()
 
+    @catch_orin("StartProgram")
     def StartProgram(
         self, ProgramName: str, Mode: str, *, metadata: MetadataDict, instance: ObservableCommandInstance
     ) -> StartProgram_Responses:
         """
-        Starts a program, monitors its @STATUS (instance-local), and terminates the observable instance
-        reliably – even with parallel calls.
-
-        Terminal states:
-        - HOLD_STOPPED (1) -> "HoldStopped"
-        - STOPPED (2) -> "Completed"
-        - STEP_STOPPED (4) -> "Completed(Step)"
-
-        - In case of ORiN errors *during startup*, @ERROR_DESCRIPTION is read with a short retry and output.
-        - "The operation completed successfully." is NOT interpreted as an error.
+        Startet ein Programm, überwacht @STATUS und beendet die Observable-Instanz sauber.
+        JEDE ORiNException wird via @catch_orin abgefangen und übersetzt.
         """
         instance.begin_execution()
 
-        # ---- DENSO status constants (if not defined globally) ----
         STATUS_NON_EXISTENT = 0
         STATUS_HOLD_STOPPED = 1
         STATUS_STOPPED      = 2
@@ -250,22 +285,27 @@ class DensoRC8ControlImpl(DensoRC8ControlBase):
         STATUS_STEP_STOPPED = 4
         END_STATES = {STATUS_HOLD_STOPPED, STATUS_STOPPED, STATUS_STEP_STOPPED}
 
-        # 1) Save program/handles locally (no global dependency)
-        try:
-            self.controller.get_program(program_name=ProgramName)
-            task_handle = self.controller.task_handles[ProgramName]
-            status_handle = self.controller.task_status_vars[ProgramName]
-        except ORiNException as e:
-            self._raise_with_controller_error("StartProgram/get_program", e)
+        # Handle & Status-Var holen (ORiN wird zentral gefangen)
+        self.controller.get_program(program_name=ProgramName)
+        task_handle = self.controller.task_handles[ProgramName]
+        status_handle = self.controller.task_status_vars[ProgramName]
 
-        # Optional: Set property focus (has no effect on this instance)
-        try:
-            setattr(self.controller, "current_program_name", ProgramName)
-        except Exception:
-            pass
+        setattr(self.controller, "current_program_name", ProgramName)
 
-        # --- helper: @ERROR_DESCRIPTION read once ---
-        def _read_controller_err_text_once() -> str:
+        # Start
+        self.controller.start_program(program_name=ProgramName, mode=Mode)
+
+        # Monitoring-Loop
+        poll_dt = 0.1
+        max_run_s = 60 * 10
+        t0 = time.time()
+        progress = 0.0
+
+        confirm_needed = 3
+        confirm_count = 0
+        last_cur = None
+
+        def _read_error_description_once() -> str:
             try:
                 var_ed = self.controller.bcap.controller_getvariable(self.controller.h_ctrl, "@ERROR_DESCRIPTION", "")
                 txt = self.controller.bcap.variable_getvalue(var_ed)
@@ -278,47 +318,6 @@ class DensoRC8ControlImpl(DensoRC8ControlBase):
                 pass
             return ""
 
-        # 2) Start – here the immediate error text must be captured
-        try:
-            self.controller.start_program(program_name=ProgramName, mode=Mode)
-        except ORiNException as e:
-            # Short retry window because RC8 likes to set the text with a minimal delay
-            desc = ""
-            for _ in range(6):  # ~ 6 * 80ms = ~0,5s
-                desc = _read_controller_err_text_once()
-                if desc:
-                    break
-                time.sleep(0.08)
-
-            # If controller text is empty: optionally try task-side (@ERROR_DESCRIPTION)
-            if not desc and task_handle is not None:
-                try:
-                    v = self.controller.bcap.task_getvariable(task_handle, "@ERROR_DESCRIPTION", "")
-                    t = self.controller.bcap.variable_getvalue(v)
-                    if t:
-                        t = str(t).strip()
-                        if t.lower() != "the operation completed successfully.":
-                            desc = t
-                except Exception:
-                    pass
-
-            # Build ErrorMessage
-            msg = f"StartProgram: ORiNException {e}"
-            if desc:
-                msg += f" — {desc}"
-            raise UndefinedExecutionError(msg)
-
-        # 3) Local monitoring loop: read ONLY your own status_handle
-        poll_dt = 0.1
-        max_run_s = 60 * 10  # 10 Minutes limit
-        t0 = time.time()
-        progress = 0.0
-
-        # small debouncing for final states
-        confirm_needed = 3
-        confirm_count = 0
-        last_cur = None
-
         while True:
             if time.time() - t0 > max_run_s:
                 raise UndefinedExecutionError(f"StartProgram '{ProgramName}' timeout after {max_run_s}s")
@@ -329,7 +328,6 @@ class DensoRC8ControlImpl(DensoRC8ControlBase):
                 time.sleep(poll_dt)
                 continue
 
-            # Progress während RUNNING sanft hochziehen, aber < 1.0 lassen
             if cur == STATUS_RUNNING:
                 if progress < 0.95:
                     progress = min(0.95, progress + 0.05)
@@ -337,12 +335,10 @@ class DensoRC8ControlImpl(DensoRC8ControlBase):
                         instance.progress = progress
                     except Exception:
                         pass
-                # Endzustands-Entprellung zurücksetzen
                 confirm_count = 0
                 last_cur = cur
 
             elif cur in END_STATES:
-                # Entprellen
                 if cur == last_cur:
                     confirm_count += 1
                 else:
@@ -350,36 +346,29 @@ class DensoRC8ControlImpl(DensoRC8ControlBase):
                     last_cur = cur
 
                 if confirm_count >= confirm_needed:
-                    # finaler Abschluss
                     try:
                         instance.progress = 1.0
                     except Exception:
                         pass
 
-                    # --- Check for errors first at EVERY STOPPED ---
-                    # (1) One-time controller error text
-                    err_txt = _read_controller_err_text_once()
+                    # (A) Controller-Text einmalig prüfen
+                    err_txt = _read_error_description_once()
                     if err_txt:
                         raise UndefinedExecutionError(f"Program '{ProgramName}' failed: {err_txt}")
 
-                    # (2) RC8-error_stack / @ERROR_CODE
-                    has_err, msg = self._read_rc8_error()
+                    # (B) RC8-ErrorStack prüfen
+                    has_err, msg = self._read_rc8_error_stack()
                     if has_err:
                         raise UndefinedExecutionError(f"Program '{ProgramName}' failed: {msg}")
 
-                    # --- No error detected: complete successfully as before ---
                     if cur == STATUS_STOPPED:
                         return StartProgram_Responses(Status="Completed")
-
                     if cur == STATUS_STEP_STOPPED:
                         return StartProgram_Responses(Status="Completed(Step)")
-
                     if cur == STATUS_HOLD_STOPPED:
-                        # for example after „Cont. Stop“/Stop-Button on TP
                         return StartProgram_Responses(Status="HoldStopped")
 
             else:
-                # other States (z.B. NON_EXISTENT) – just keep polling
                 confirm_count = 0
                 last_cur = cur
 
@@ -395,25 +384,69 @@ class DensoRC8ControlImpl(DensoRC8ControlBase):
                 logging.debug("STATUS_on_subscription: initial push skipped")
         return super().STATUS_on_subscription(metadata=metadata)
 
-    # ---------------------- Helpers ----------------------
+    # ---------------------- Zentrale Fehlerübersetzung ----------------------
 
-    def _raise_with_controller_error(self, ctx: str, orin_exc: ORiNException) -> None:
-        err_desc = ""
+    def _format_orin_error(self, ctx: str, exc: BaseException, *, retries: int = 6, sleep_s: float = 0.08) -> str:
+        """
+        Liefert eine aussagekräftige Fehlermeldung:
+          - HRESULT dec/hex (falls verfügbar)
+          - GetErrorDescription(HRESULT)
+          - ggf. RC8 ErrorStack (GetCurErrorInfo) oder @ERROR_CODE/@ERROR_DESCRIPTION
+        """
+        # HRESULT extrahieren (robust, ohne Annahmen über den Exc-Typ)
+        hr_int = None
         try:
-            err_var = self.controller.bcap.controller_getvariable(self.controller.h_ctrl, "@ERROR_DESCRIPTION", "")
-            err_desc = self.controller.bcap.variable_getvalue(err_var)
-        except Exception as exc:
-            logging.warning(f"[{ctx}] Error while read @ERROR_DESCRIPTION: {exc}")
-        raise UndefinedExecutionError(f"{ctx}: ORiNException {orin_exc} - Controller-Error: {err_desc}")
+            # gängige ORiNException trägt int in args[0]
+            hr_int = int(getattr(exc, "args", [None])[0])
+        except Exception:
+            hr_int = None
+        hr_hex = f"0x{hr_int & 0xFFFFFFFF:08X}" if isinstance(hr_int, int) else "n/a"
 
-    # ---- Helper: RC8-Error read (b-CAP) ----
-    def _read_rc8_error(self):
+        # kurze Wartezeit, damit RC8 ggf. den Fehlerstack setzt
+        has_err, stack_msg = False, ""
+        for _ in range(retries):
+            has_err, stack_msg = self._read_rc8_error_stack()
+            if has_err:
+                break
+            time.sleep(sleep_s)
+        if not has_err:
+            has_err, stack_msg = self._read_rc8_error_stack()
+
+        # Zusatz: @ERROR_CODE/@ERROR_DESCRIPTION falls kein Stack
+        if not has_err:
+            try:
+                h_code = self.controller.bcap.controller_getvariable(self.controller.h_ctrl, "@ERROR_CODE", "")
+                code = self.controller.bcap.variable_getvalue(h_code)
+                if code is not None and int(code) != 0:
+                    h_desc = self.controller.bcap.controller_getvariable(self.controller.h_ctrl, "@ERROR_DESCRIPTION", "")
+                    desc = self.controller.bcap.variable_getvalue(h_desc)
+                    desc = (str(desc) if desc is not None else "").strip()
+                    has_err, stack_msg = True, f"RC8 error {int(code)}: {desc or 'No description'}"
+            except Exception:
+                pass
+
+        # Klartext zu HRESULT
+        hr_text = ""
+        if isinstance(hr_int, int):
+            try:
+                hr_text = self.controller.bcap.controller_execute(self.controller.h_ctrl, "GetErrorDescription", int(hr_int))
+                hr_text = (str(hr_text) if hr_text is not None else "").strip()
+            except Exception:
+                hr_text = ""
+
+        base = f"{ctx} failed: ORiN {hr_int if hr_int is not None else 'n/a'} ({hr_hex})"
+        parts = [base]
+        if hr_text:
+            parts.append(hr_text)
+        if has_err and stack_msg:
+            parts.append(stack_msg)
+        return " — ".join(parts)
+
+    def _read_rc8_error_stack(self) -> Tuple[bool, str]:
         """
-        Delivers (has_error, message).
-        1) Error_stack (GetCurErrorCount/GetCurErrorInfo(0))
-        2) @ERROR_CODE/@ERROR_DESCRIPTION
+        (has_error, message) – Controller-Fehlerstack:
+          GetCurErrorCount / GetCurErrorInfo(0)
         """
-        # 1) ErrorStack
         try:
             cnt = self.controller.bcap.controller_execute(self.controller.h_ctrl, "GetCurErrorCount", "")
             if cnt and int(cnt) > 0:
@@ -421,22 +454,14 @@ class DensoRC8ControlImpl(DensoRC8ControlBase):
                 # info: [code, message, subcode, fileIdLine, programName, lineNo, fileId]
                 code = info[0] if len(info) > 0 else None
                 msg  = info[1] if len(info) > 1 else ""
-                return True, f"RC8 error {code}: {msg}"
-        except Exception:
-            pass  # Read errors should not crash the command
-
-        # 2) Systemvariables
-        try:
-            h_code = self.controller.bcap.controller_getvariable(self.controller.h_ctrl, "@ERROR_CODE", "")
-            err_code = self.controller.bcap.variable_getvalue(h_code)
-            if err_code is not None and int(err_code) != 0:
-                h_desc = self.controller.bcap.controller_getvariable(self.controller.h_ctrl, "@ERROR_DESCRIPTION", "")
-                desc = self.controller.bcap.variable_getvalue(h_desc)
-                desc = (str(desc) if desc is not None else "").strip()
-                return True, f"RC8 error {int(err_code)}: {desc or 'No description'}"
+                prog = info[4] if len(info) > 4 else ""
+                line = info[5] if len(info) > 5 else ""
+                details = f"RC8 error {code}: {msg}"
+                if prog or line:
+                    details += f" (prog={prog}, line={line})"
+                return True, details
         except Exception:
             pass
-
         return False, ""
 
     # ---------------------- Lifecycle Hooks ----------------------
