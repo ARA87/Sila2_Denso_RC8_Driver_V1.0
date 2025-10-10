@@ -13,7 +13,7 @@ from sila2.framework.errors.undefined_execution_error import UndefinedExecutionE
 # --- Robust: ORiNException aus beiden möglichen Pfaden importieren ---
 _ORIN_TYPES: tuple = ()
 try:
-    # Pfad A: wie vom Controller benutzt
+    # Pfad A: über driver/ eingebunden
     from .driver.pybcapclient.orinexception import ORiNException as ORiN_A  # type: ignore
     _ORIN_TYPES = _ORIN_TYPES + (ORiN_A,)
 except Exception:
@@ -28,7 +28,6 @@ except Exception:
 def _is_orin_exception(exc: BaseException) -> bool:
     if _ORIN_TYPES and isinstance(exc, _ORIN_TYPES):
         return True
-    # Fallback, falls Modulpfade variieren: nach Klassenname prüfen
     return exc.__class__.__name__ == "ORiNException"
 
 from .driver.denso_rc8_controller import DensoRC8Controller
@@ -73,18 +72,17 @@ F = TypeVar("F", bound=Callable[..., Any])
 
 def catch_orin(ctx: str) -> Callable[[F], F]:
     """
-    Dekorator: fängt JEDE Exception, prüft, ob es eine ORiNException ist
-    (egal aus welchem Modulpfad), und übersetzt sie andernfalls unverändert weiter.
+    Dekorator: fängt JEDE Exception, erkennt ORiNException (egal aus welchem Modulpfad),
+    übersetzt sie andernfalls unverändert weiter.
     """
     def decorator(fn: F) -> F:
         @wraps(fn)
         def wrapper(self: "DensoRC8ControlImpl", *args, **kwargs):
             try:
                 return fn(self, *args, **kwargs)
-            except Exception as e:  # bewusst breit gefasst
+            except Exception as e:  # breit, um alle ORiN-Pfade zu erwischen
                 if _is_orin_exception(e):
                     raise UndefinedExecutionError(self._format_orin_error(ctx, e))
-                # Nicht-ORiN-Fehler normal weiterreichen
                 raise
         return cast(F, wrapper)
     return decorator
@@ -93,14 +91,17 @@ def catch_orin(ctx: str) -> Callable[[F], F]:
 class DensoRC8ControlImpl(DensoRC8ControlBase):
     """
     - STATUS-Observable mit aktivem Push
-    - StartProgram: @STATUS erst NACH Start binden
+    - StartProgram: kein internes Timeout; @STATUS wird überwacht, bis Endzustand
     - JEDE ORiNException wird zentral in Klartext übersetzt (HRESULT + GetErrorDescription + RC8-ErrorStack)
     """
 
     def __init__(self, parent_server: Server) -> None:
         super().__init__(parent_server=parent_server)
         self.controller = DensoRC8Controller()
-        self.StartProgram_default_lifetime_of_execution = timedelta(minutes=30)
+
+        # Lebensdauer der Observable-Instanz großzügig setzen (hier: 7 Tage)
+        # => verhindert, dass der Server die Instanz vorzeitig beendet.
+        self.StartProgram_default_lifetime_of_execution = timedelta(days=7)
 
         # last published STATUS (for initial push)
         self._last_status: Optional[int] = None
@@ -274,7 +275,8 @@ class DensoRC8ControlImpl(DensoRC8ControlBase):
     ) -> StartProgram_Responses:
         """
         Startet ein Programm, überwacht @STATUS und beendet die Observable-Instanz sauber.
-        JEDE ORiNException wird via @catch_orin abgefangen und übersetzt.
+        KEIN internes Timeout – die Schleife läuft, bis ein Endzustand erreicht ist
+        (oder die SiLA-Instanz-Lifetime abläuft, z. B. nach 7 Tagen).
         """
         instance.begin_execution()
 
@@ -295,12 +297,9 @@ class DensoRC8ControlImpl(DensoRC8ControlBase):
         # Start
         self.controller.start_program(program_name=ProgramName, mode=Mode)
 
-        # Monitoring-Loop
+        # Monitoring-Loop (ohne hartes Timeout)
         poll_dt = 0.1
-        max_run_s = 60 * 10
-        t0 = time.time()
         progress = 0.0
-
         confirm_needed = 3
         confirm_count = 0
         last_cur = None
@@ -319,9 +318,6 @@ class DensoRC8ControlImpl(DensoRC8ControlBase):
             return ""
 
         while True:
-            if time.time() - t0 > max_run_s:
-                raise UndefinedExecutionError(f"StartProgram '{ProgramName}' timeout after {max_run_s}s")
-
             try:
                 cur = int(self.controller.bcap.variable_getvalue(status_handle))
             except Exception:
@@ -393,10 +389,9 @@ class DensoRC8ControlImpl(DensoRC8ControlBase):
           - GetErrorDescription(HRESULT)
           - ggf. RC8 ErrorStack (GetCurErrorInfo) oder @ERROR_CODE/@ERROR_DESCRIPTION
         """
-        # HRESULT extrahieren (robust, ohne Annahmen über den Exc-Typ)
+        # HRESULT
         hr_int = None
         try:
-            # gängige ORiNException trägt int in args[0]
             hr_int = int(getattr(exc, "args", [None])[0])
         except Exception:
             hr_int = None
@@ -425,7 +420,7 @@ class DensoRC8ControlImpl(DensoRC8ControlBase):
             except Exception:
                 pass
 
-        # Klartext zu HRESULT
+        # Klartext zum HRESULT
         hr_text = ""
         if isinstance(hr_int, int):
             try:
