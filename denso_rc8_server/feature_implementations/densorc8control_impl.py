@@ -40,7 +40,6 @@ from ..generated.densorc8control import (
     GetIValue_Responses,
     GetJValue_Responses,
     GetPosValue_Responses,
-    GetProgram_Responses,
     GetPValue_Responses,
     GetSValue_Responses,
     GetVValue_Responses,
@@ -55,6 +54,7 @@ from ..generated.densorc8control import (
     StartProgram_Responses,
     StopProgram_Responses,
     ClearError_Responses,
+    GetTaskNames_Responses,
 )
 
 if TYPE_CHECKING:
@@ -239,24 +239,20 @@ class DensoRC8ControlImpl(DensoRC8ControlBase):
         value = self.controller.get_pos_value()
         return GetPosValue_Responses(Value=value)
 
+    # ---------------------- Task Names ----------------------
+
+    @catch_orin("GetTaskNames")
+    def GetTaskNames(self, *, metadata: MetadataDict) -> GetTaskNames_Responses:
+        """
+        SiLA2 command that returns the list of task names available on the RC8.
+
+        Equivalent to CaoController::get_TaskNames in the ORiN/RC8 provider.
+        """
+        names = self.controller.get_task_names()
+        return GetTaskNames_Responses(TaskNames=names)
+
     # ---------------------- Program Control ----------------------
 
-    @catch_orin("GetProgram")
-    def GetProgram(self, ProgramName: str, *, metadata: MetadataDict) -> GetProgram_Responses:
-        """Bindet Handle + @STATUS und pusht initialen STATUS."""
-        self.controller.get_program(program_name=ProgramName)
-        setattr(self.controller, "current_program_name", ProgramName)
-
-        var_handle = self.controller.task_status_vars.get(ProgramName)
-        if var_handle:
-            try:
-                cur = int(self.controller.bcap.variable_getvalue(var_handle))
-                self._last_status = cur
-                self.update_STATUS(cur)
-            except Exception as e:
-                logging.debug("GetProgram: initial @STATUS read failed: %r", e)
-
-        return GetProgram_Responses()
 
     @catch_orin("StopProgram")
     def StopProgram(self, ProgramName: str, Mode: str, *, metadata: MetadataDict) -> StopProgram_Responses:
