@@ -138,6 +138,30 @@ class DensoRC8Controller:
         logging.info("Current position read: %s", retval)
         return retval
 
+
+    # ---------------------- Task Names ----------------------
+
+    def get_task_names(self) -> List[str]:
+        """
+        Returns the list of PAC task names that can be specified in AddTask /
+        StartProgram (wraps b-CAP Controller_GetTaskNames / CaoController::get_TaskNames).
+        """
+        self._require()
+        # Erwarteter bCAPClient-Call (analog zu Controller_GetTaskNames)
+        raw = self.bcap.controller_gettasknames(self.h_ctrl)
+
+        # raw ist typischerweise eine Python-Liste/tuple aus BSTR/str
+        if isinstance(raw, (list, tuple)):
+            names = [str(x) for x in raw]
+        elif raw is None:
+            names = []
+        else:
+            # Falls die Library nur einen einzelnen Wert liefert
+            names = [str(raw)]
+
+        logging.info("Available task names: %s", names)
+        return names
+
     # ---------------------- S values ----------------------
 
     def set_s_value(self, Index: int, value: str):
