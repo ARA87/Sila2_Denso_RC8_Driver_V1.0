@@ -1,0 +1,487 @@
+<Feature xmlns="http://www.sila-standard.org" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" FeatureVersion="1.0" Locale="en-US" MaturityLevel="Draft" Originator="densorobotics.europe" SiLA2Version="1.1" xsi:schemaLocation="http://www.sila-standard.org FeatureDefinition.xsd">
+  <Identifier>DensoRC8Control</Identifier>
+  <DisplayName>Denso RC8 Control</DisplayName>
+  <Description>Control a Denso RC8 robot using BCAP over pybcapclient.</Description>
+  <Property>
+    <Identifier>STATUS</Identifier>
+    <DisplayName>Status</DisplayName>
+    <Description>State of task execution: 0=NON_EXISTENT, 1=Hold-stopped, 2=Stopped, 3=Running, 4=Step-stopped</Description>
+    <Observable>Yes</Observable>
+    <DataType>
+      <Basic>Integer</Basic>
+    </DataType>
+  </Property>
+  <!-- Configure Connection -->
+  <Command>
+    <Identifier>ConfigureConnection</Identifier>
+    <DisplayName>Configure Connection</DisplayName>
+    <Description>Configure the robot connection before starting.</Description>
+    <Observable>No</Observable>
+    <Parameter>
+      <Identifier>IPAddress</Identifier>
+      <DisplayName>IP Address</DisplayName>
+      <Description>IP address of the RC8 controller</Description>
+      <DataType>
+        <Basic>String</Basic>
+      </DataType>
+    </Parameter>
+    <Parameter>
+      <Identifier>Port</Identifier>
+      <DisplayName>Port</DisplayName>
+      <Description>Port number for the BCAP server</Description>
+      <DataType>
+        <Basic>Integer</Basic>
+      </DataType>
+    </Parameter>
+    <Parameter>
+      <Identifier>Timeout</Identifier>
+      <DisplayName>Timeout</DisplayName>
+      <Description>Timeout for BCAP connection (ms)</Description>
+      <DataType>
+        <Basic>Integer</Basic>
+      </DataType>
+    </Parameter>
+  </Command>
+  <!-- Start Connection -->
+  <Command>
+    <Identifier>Start</Identifier>
+    <DisplayName>Start Connection</DisplayName>
+    <Description>Establish the BCAP connection to the RC8 controller.</Description>
+    <Observable>No</Observable>
+  </Command>
+  <Command>
+    <Identifier>GetTaskNames</Identifier>
+    <DisplayName>Get Task Names</DisplayName>
+    <Description>Get a list of task names that can be started via StartProgram (equivalent to CaoController::get_TaskNames).</Description>
+    <Observable>No</Observable>
+    <Response>
+      <Identifier>TaskNames</Identifier>
+      <DisplayName>Task Names</DisplayName>
+      <Description>Available task names on the RC8 controller.</Description>
+      <DataType>
+        <List>
+          <DataType>
+            <Basic>String</Basic>
+          </DataType>
+        </List>
+      </DataType>
+    </Response>
+  </Command>
+  <!-- Set/Get S Value -->
+  <Command>
+    <Identifier>SetSValue</Identifier>
+    <DisplayName>Set S Value</DisplayName>
+    <Description>Write a value into the S10 variable.</Description>
+    <Observable>No</Observable>
+    <Parameter>
+      <Identifier>Index</Identifier>
+      <DisplayName>Index</DisplayName>
+      <Description>index of the S Variable</Description>
+      <DataType>
+        <Basic>Integer</Basic>
+      </DataType>
+    </Parameter>
+    <Parameter>
+      <Identifier>Value</Identifier>
+      <DisplayName>Value</DisplayName>
+      <Description>Value to write to S10</Description>
+      <DataType>
+        <Basic>String</Basic>
+      </DataType>
+    </Parameter>
+  </Command>
+  <Command>
+    <Identifier>GetSValue</Identifier>
+    <DisplayName>Get S Value</DisplayName>
+    <Description>Read the current value from the S variable.</Description>
+    <Observable>No</Observable>
+    <Parameter>
+      <Identifier>Index</Identifier>
+      <DisplayName>Index</DisplayName>
+      <Description>index of the s variable</Description>
+      <DataType>
+        <Basic>Integer</Basic>
+      </DataType>
+    </Parameter>
+    <Response>
+      <Identifier>Value</Identifier>
+      <DisplayName>Value</DisplayName>
+      <Description>Current value of S</Description>
+      <DataType>
+        <Basic>String</Basic>
+      </DataType>
+    </Response>
+  </Command>
+  <!-- Set/Get I Value -->
+  <Command>
+    <Identifier>SetIValue</Identifier>
+    <DisplayName>Set I Value</DisplayName>
+    <Description>Write a value into the global Integer variable.</Description>
+    <Observable>No</Observable>
+    <Parameter>
+      <Identifier>Index</Identifier>
+      <DisplayName>Index</DisplayName>
+      <Description>index of the I Variable</Description>
+      <DataType>
+        <Basic>Integer</Basic>
+      </DataType>
+    </Parameter>
+    <Parameter>
+      <Identifier>Value</Identifier>
+      <DisplayName>Value</DisplayName>
+      <Description>Value to write to Global Integer</Description>
+      <DataType>
+        <Basic>Integer</Basic>
+      </DataType>
+    </Parameter>
+  </Command>
+  <Command>
+    <Identifier>GetIValue</Identifier>
+    <DisplayName>Get I Value</DisplayName>
+    <Description>Read the current value from the I variable.</Description>
+    <Observable>No</Observable>
+    <Parameter>
+      <Identifier>Index</Identifier>
+      <DisplayName>Index</DisplayName>
+      <Description>index of the I variable</Description>
+      <DataType>
+        <Basic>Integer</Basic>
+      </DataType>
+    </Parameter>
+    <Response>
+      <Identifier>Value</Identifier>
+      <DisplayName>Value</DisplayName>
+      <Description>Current value of I</Description>
+      <DataType>
+        <Basic>Integer</Basic>
+      </DataType>
+    </Response>
+  </Command>
+  <!-- Set/Get IO Value -->
+  <Command>
+    <Identifier>SetIOValue</Identifier>
+    <DisplayName>Set IO Value</DisplayName>
+    <Description>Write a value into the IO variable.</Description>
+    <Observable>No</Observable>
+    <Parameter>
+      <Identifier>Index</Identifier>
+      <DisplayName>Index</DisplayName>
+      <Description>index of the IO Variable</Description>
+      <DataType>
+        <Basic>Integer</Basic>
+      </DataType>
+    </Parameter>
+    <Parameter>
+      <Identifier>Value</Identifier>
+      <DisplayName>Value</DisplayName>
+      <Description>Value to write to IO</Description>
+      <DataType>
+        <Basic>Integer</Basic>
+      </DataType>
+    </Parameter>
+  </Command>
+  <Command>
+    <Identifier>GetIOValue</Identifier>
+    <DisplayName>Get IO Value</DisplayName>
+    <Description>Read the current value from the IO variable.</Description>
+    <Observable>No</Observable>
+    <Parameter>
+      <Identifier>Index</Identifier>
+      <DisplayName>Index</DisplayName>
+      <Description>index of the IO variable</Description>
+      <DataType>
+        <Basic>Integer</Basic>
+      </DataType>
+    </Parameter>
+    <Response>
+      <Identifier>Value</Identifier>
+      <DisplayName>Value</DisplayName>
+      <Description>Current value of IO</Description>
+      <DataType>
+        <Basic>Integer</Basic>
+      </DataType>
+    </Response>
+  </Command>
+  <!-- Set/Get F Value -->
+  <Command>
+    <Identifier>SetFValue</Identifier>
+    <DisplayName>Set F Value</DisplayName>
+    <Description>Write a value into the global Float variable.</Description>
+    <Observable>No</Observable>
+    <Parameter>
+      <Identifier>Index</Identifier>
+      <DisplayName>Index</DisplayName>
+      <Description>index of the F Variable</Description>
+      <DataType>
+        <Basic>Integer</Basic>
+      </DataType>
+    </Parameter>
+    <Parameter>
+      <Identifier>Value</Identifier>
+      <DisplayName>Value</DisplayName>
+      <Description>Value to write to Global Float Variable</Description>
+      <DataType>
+        <Basic>Real</Basic>
+      </DataType>
+    </Parameter>
+  </Command>
+  <Command>
+    <Identifier>GetFValue</Identifier>
+    <DisplayName>Get F Value</DisplayName>
+    <Description>Read the current value from the F variable.</Description>
+    <Observable>No</Observable>
+    <Parameter>
+      <Identifier>Index</Identifier>
+      <DisplayName>Index</DisplayName>
+      <Description>index of the F variable</Description>
+      <DataType>
+        <Basic>Integer</Basic>
+      </DataType>
+    </Parameter>
+    <Response>
+      <Identifier>Value</Identifier>
+      <DisplayName>Value</DisplayName>
+      <Description>Current value of F</Description>
+      <DataType>
+        <Basic>Real</Basic>
+      </DataType>
+    </Response>
+  </Command>
+  <Command>
+    <Identifier>ClearError</Identifier>
+    <DisplayName>Clear Error</DisplayName>
+    <Description>Clears the current error on the RC8 controller.</Description>
+    <Observable>No</Observable>
+  </Command>
+  <!-- Set/Get P Value -->
+  <Command>
+    <Identifier>SetPValue</Identifier>
+    <DisplayName>Set P Value</DisplayName>
+    <Description>Write a value into the global Position variable.</Description>
+    <Observable>No</Observable>
+    <Parameter>
+      <Identifier>Index</Identifier>
+      <DisplayName>Index</DisplayName>
+      <Description>index of the P Variable</Description>
+      <DataType>
+        <Basic>Integer</Basic>
+      </DataType>
+    </Parameter>
+    <Parameter>
+      <Identifier>Value</Identifier>
+      <DisplayName>Value</DisplayName>
+      <Description>Value to write to Global Position Variable</Description>
+      <DataType>
+        <List>
+          <DataType>
+            <Basic>Real</Basic>
+          </DataType>
+        </List>
+      </DataType>
+    </Parameter>
+  </Command>
+  <Command>
+    <Identifier>GetPValue</Identifier>
+    <DisplayName>Get P Value</DisplayName>
+    <Description>Read the current value from the P variable.</Description>
+    <Observable>No</Observable>
+    <Parameter>
+      <Identifier>Index</Identifier>
+      <DisplayName>Index</DisplayName>
+      <Description>index of the P variable</Description>
+      <DataType>
+        <Basic>Integer</Basic>
+      </DataType>
+    </Parameter>
+    <Response>
+      <Identifier>Value</Identifier>
+      <DisplayName>Value</DisplayName>
+      <Description>Current value of P</Description>
+      <DataType>
+        <List>
+          <DataType>
+            <Basic>Real</Basic>
+          </DataType>
+        </List>
+      </DataType>
+    </Response>
+  </Command>
+  <!-- Set/Get J Value -->
+  <Command>
+    <Identifier>SetJValue</Identifier>
+    <DisplayName>Set J Value</DisplayName>
+    <Description>Write a value into the global Joint variable.</Description>
+    <Observable>No</Observable>
+    <Parameter>
+      <Identifier>Index</Identifier>
+      <DisplayName>Index</DisplayName>
+      <Description>index of the J Variable</Description>
+      <DataType>
+        <Basic>Integer</Basic>
+      </DataType>
+    </Parameter>
+    <Parameter>
+      <Identifier>Value</Identifier>
+      <DisplayName>Value</DisplayName>
+      <Description>Value to write to Global Joint Variable</Description>
+      <DataType>
+        <List>
+          <DataType>
+            <Basic>Real</Basic>
+          </DataType>
+        </List>
+      </DataType>
+    </Parameter>
+  </Command>
+  <Command>
+    <Identifier>GetJValue</Identifier>
+    <DisplayName>Get J Value</DisplayName>
+    <Description>Read the current value from the J variable.</Description>
+    <Observable>No</Observable>
+    <Parameter>
+      <Identifier>Index</Identifier>
+      <DisplayName>Index</DisplayName>
+      <Description>index of the J variable</Description>
+      <DataType>
+        <Basic>Integer</Basic>
+      </DataType>
+    </Parameter>
+    <Response>
+      <Identifier>Value</Identifier>
+      <DisplayName>Value</DisplayName>
+      <Description>Current value of J</Description>
+      <DataType>
+        <List>
+          <DataType>
+            <Basic>Real</Basic>
+          </DataType>
+        </List>
+      </DataType>
+    </Response>
+  </Command>
+  <!-- Set/Get V Value -->
+  <Command>
+    <Identifier>SetVValue</Identifier>
+    <DisplayName>Set V Value</DisplayName>
+    <Description>Write a value into the global Vector variable.</Description>
+    <Observable>No</Observable>
+    <Parameter>
+      <Identifier>Index</Identifier>
+      <DisplayName>Index</DisplayName>
+      <Description>index of the V Variable</Description>
+      <DataType>
+        <Basic>Integer</Basic>
+      </DataType>
+    </Parameter>
+    <Parameter>
+      <Identifier>Value</Identifier>
+      <DisplayName>Value</DisplayName>
+      <Description>Value to write to Global Vector Variable</Description>
+      <DataType>
+        <List>
+          <DataType>
+            <Basic>Real</Basic>
+          </DataType>
+        </List>
+      </DataType>
+    </Parameter>
+  </Command>
+  <Command>
+    <Identifier>GetVValue</Identifier>
+    <DisplayName>Get V Value</DisplayName>
+    <Description>Read the current value from the Vector variable.</Description>
+    <Observable>No</Observable>
+    <Parameter>
+      <Identifier>Index</Identifier>
+      <DisplayName>Index</DisplayName>
+      <Description>index of the V variable</Description>
+      <DataType>
+        <Basic>Integer</Basic>
+      </DataType>
+    </Parameter>
+    <Response>
+      <Identifier>Value</Identifier>
+      <DisplayName>Value</DisplayName>
+      <Description>Current value of V</Description>
+      <DataType>
+        <List>
+          <DataType>
+            <Basic>Real</Basic>
+          </DataType>
+        </List>
+      </DataType>
+    </Response>
+  </Command>
+  <!-- Get Position -->
+  <Command>
+    <Identifier>GetPosValue</Identifier>
+    <DisplayName>Get position</DisplayName>
+    <Description>Read the current position from the Robot</Description>
+    <Observable>No</Observable>
+    <Response>
+      <Identifier>Value</Identifier>
+      <DisplayName>Value</DisplayName>
+      <Description>Current Position</Description>
+      <DataType>
+        <List>
+          <DataType>
+            <Basic>Real</Basic>
+          </DataType>
+        </List>
+      </DataType>
+    </Response>
+  </Command>
+  <Command>
+    <Identifier>StartProgram</Identifier>
+    <DisplayName>Start Program</DisplayName>
+    <Description>Start a robot program with mode selection and observe execution status.</Description>
+    <Observable>Yes</Observable>
+    <Parameter>
+      <Identifier>ProgramName</Identifier>
+      <DisplayName>Program Name</DisplayName>
+      <Description>Name of the program to start (e.g., Pro1)</Description>
+      <DataType>
+        <Basic>String</Basic>
+      </DataType>
+    </Parameter>
+    <Parameter>
+      <Identifier>Mode</Identifier>
+      <DisplayName>Mode</DisplayName>
+      <Description>Execution mode: one_cycle, continuous, or step_forward</Description>
+      <DataType>
+        <Basic>String</Basic>
+      </DataType>
+    </Parameter>
+    <Response>
+      <Identifier>Status</Identifier>
+      <DisplayName>Status</DisplayName>
+      <Description>Program execution status: Running, Completed, Error</Description>
+      <DataType>
+        <Basic>String</Basic>
+      </DataType>
+    </Response>
+  </Command>
+  <!-- Stop Program -->
+  <Command>
+    <Identifier>StopProgram</Identifier>
+    <DisplayName>Stop Program</DisplayName>
+    <Description>Stop a robot program with mode selection.</Description>
+    <Observable>No</Observable>
+    <Parameter>
+      <Identifier>ProgramName</Identifier>
+      <DisplayName>Program Name</DisplayName>
+      <Description>Name of the program to stop (e.g., Pro1)</Description>
+      <DataType>
+        <Basic>String</Basic>
+      </DataType>
+    </Parameter>
+    <Parameter>
+      <Identifier>Mode</Identifier>
+      <DisplayName>Mode</DisplayName>
+      <Description>Stop mode: 0=Default,1=Instant,2=Step,3=Cyclestop,4=Initialized</Description>
+      <DataType>
+        <Basic>String</Basic>
+      </DataType>
+    </Parameter>
+  </Command>
+</Feature>
