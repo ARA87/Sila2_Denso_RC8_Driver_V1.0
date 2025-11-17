@@ -60,6 +60,26 @@
     <Description>Establish the BCAP connection to the RC8 controller.</Description>
     <Observable>No</Observable>
   </Command>
+  
+    <Command>
+    <Identifier>GetTaskNames</Identifier>
+    <DisplayName>Get Task Names</DisplayName>
+    <Description>
+      Get a list of task names that can be started via StartProgram (equivalent to CaoController::get_TaskNames).
+    </Description>
+    <Observable>No</Observable>
+    <Response>
+      <Identifier>TaskNames</Identifier>
+      <DisplayName>Task Names</DisplayName>
+      <Description>Available task names on the RC8 controller.</Description>
+      <DataType>
+        <List>
+          <DataType><Basic>String</Basic></DataType>
+        </List>
+      </DataType>
+    </Response>
+  </Command>
+
 
   <!-- Set/Get S Value -->
   <Command>
@@ -434,18 +454,6 @@
     </Parameter>
   </Command>
 
-  <!-- Get Program -->
-  <Command>
-    <Identifier>GetProgram</Identifier>
-    <DisplayName>Get Program</DisplayName>
-    <Description>Get Programs.</Description>
-    <Observable>No</Observable>
-    <Parameter>
-      <Identifier>ProgramName</Identifier>
-      <DisplayName>Program Name</DisplayName>
-      <Description>Name of the program to query (e.g., Pro1)</Description>
-      <DataType><Basic>String</Basic></DataType>
-    </Parameter>
-  </Command>
+
 
 </Feature>
