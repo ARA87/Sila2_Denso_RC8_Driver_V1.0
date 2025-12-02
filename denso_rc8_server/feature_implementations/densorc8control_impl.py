@@ -25,10 +25,12 @@ try:
 except Exception:
     pass
 
+
 def _is_orin_exception(exc: BaseException) -> bool:
     if _ORIN_TYPES and isinstance(exc, _ORIN_TYPES):
         return True
     return exc.__class__.__name__ == "ORiNException"
+
 
 from .driver.denso_rc8_controller import DensoRC8Controller
 
@@ -70,11 +72,13 @@ END_STATES = {STATUS_HOLD_STOPPED, STATUS_STOPPED, STATUS_STEP_STOPPED}
 
 F = TypeVar("F", bound=Callable[..., Any])
 
+
 def catch_orin(ctx: str) -> Callable[[F], F]:
     """
     Dekorator: fängt JEDE Exception, erkennt ORiNException (egal aus welchem Modulpfad),
     übersetzt sie andernfalls unverändert weiter.
     """
+
     def decorator(fn: F) -> F:
         @wraps(fn)
         def wrapper(self: "DensoRC8ControlImpl", *args, **kwargs):
@@ -84,7 +88,9 @@ def catch_orin(ctx: str) -> Callable[[F], F]:
                 if _is_orin_exception(e):
                     raise UndefinedExecutionError(self._format_orin_error(ctx, e))
                 raise
+
         return cast(F, wrapper)
+
     return decorator
 
 
@@ -253,7 +259,6 @@ class DensoRC8ControlImpl(DensoRC8ControlBase):
 
     # ---------------------- Program Control ----------------------
 
-
     @catch_orin("StopProgram")
     def StopProgram(self, ProgramName: str, Mode: str, *, metadata: MetadataDict) -> StopProgram_Responses:
         setattr(self.controller, "current_program_name", ProgramName)
@@ -279,8 +284,8 @@ class DensoRC8ControlImpl(DensoRC8ControlBase):
 
         STATUS_NON_EXISTENT = 0
         STATUS_HOLD_STOPPED = 1
-        STATUS_STOPPED      = 2
-        STATUS_RUNNING      = 3
+        STATUS_STOPPED = 2
+        STATUS_RUNNING = 3
         STATUS_STEP_STOPPED = 4
         END_STATES = {STATUS_HOLD_STOPPED, STATUS_STOPPED, STATUS_STEP_STOPPED}
 
@@ -298,20 +303,57 @@ class DensoRC8ControlImpl(DensoRC8ControlBase):
         poll_dt = 0.1
         confirm_needed = 3
         confirm_count = 0
-        last_cur = None
+        last_cur: Optional[int] = None
 
         def _read_error_description_once() -> str:
+            """
+            Liefert NUR dann Text zurück, wenn wirklich ein RC8-Fehler anliegt.
+            Primärer Indikator ist @ERROR_CODE != 0.
+            @ERROR_DESCRIPTION wird nur zur Beschreibung genutzt.
+            Alle verwendeten Controller-Variablenhandles werden wieder freigegeben.
+            """
             try:
-                var_ed = self.controller.bcap.controller_getvariable(self.controller.h_ctrl, "@ERROR_DESCRIPTION", "")
-                txt = self.controller.bcap.variable_getvalue(var_ed)
-                if txt:
-                    txt = str(txt).strip()
-                    if txt.lower() == "the operation completed successfully.":
-                        return ""
-                    return txt
+                # 1) Erst @ERROR_CODE prüfen
+                h_code = self.controller.bcap.controller_getvariable(self.controller.h_ctrl, "@ERROR_CODE", "")
+                try:
+                    code_val = self.controller.bcap.variable_getvalue(h_code)
+                finally:
+                    try:
+                        self.controller.bcap.variable_release(h_code)
+                    except Exception:
+                        pass
+
+                if code_val is None:
+                    return ""
+                try:
+                    code = int(code_val)
+                except Exception:
+                    # Wenn der Wert nicht parsebar ist, keinen Pseudo-Fehler erzeugen
+                    return ""
+
+                if code == 0:
+                    # Kein Fehler – egal, was @ERROR_DESCRIPTION gerade enthält
+                    return ""
+
+                # 2) Beschreibungstext holen (@ERROR_DESCRIPTION)
+                h_desc = self.controller.bcap.controller_getvariable(self.controller.h_ctrl, "@ERROR_DESCRIPTION", "")
+                try:
+                    desc_val = self.controller.bcap.variable_getvalue(h_desc)
+                finally:
+                    try:
+                        self.controller.bcap.variable_release(h_desc)
+                    except Exception:
+                        pass
+
+                desc = (str(desc_val).strip() if desc_val is not None else "")
+
+                if desc:
+                    return f"RC8 error {code}: {desc}"
+                else:
+                    return f"RC8 error {code}"
             except Exception:
-                pass
-            return ""
+                # Wenn wir hier scheitern, lieber still bleiben als einen Fake-Fehler zu erzeugen
+                return ""
 
         # Helper: optional Cancel-Erkennung (best effort; je nach Server vorhanden)
         def _is_cancelled(inst: ObservableCommandInstance) -> bool:
@@ -350,12 +392,12 @@ class DensoRC8ControlImpl(DensoRC8ControlBase):
                         last_cur = cur
 
                     if confirm_count >= confirm_needed:
-                        # (A) Controller-Text einmalig prüfen
+                        # (A) Controller-Fehlerzustand prüfen
                         err_txt = _read_error_description_once()
                         if err_txt:
                             raise UndefinedExecutionError(f"Program '{ProgramName}' failed: {err_txt}")
 
-                        # (B) RC8-ErrorStack prüfen
+                        # (B) RC8-ErrorStack prüfen (GetCurErrorCount / GetCurErrorInfo)
                         has_err, msg = self._read_rc8_error_stack()
                         if has_err:
                             raise UndefinedExecutionError(f"Program '{ProgramName}' failed: {msg}")
@@ -425,12 +467,26 @@ class DensoRC8ControlImpl(DensoRC8ControlBase):
         if not has_err:
             try:
                 h_code = self.controller.bcap.controller_getvariable(self.controller.h_ctrl, "@ERROR_CODE", "")
-                code = self.controller.bcap.variable_getvalue(h_code)
-                if code is not None and int(code) != 0:
+                try:
+                    code_val = self.controller.bcap.variable_getvalue(h_code)
+                finally:
+                    try:
+                        self.controller.bcap.variable_release(h_code)
+                    except Exception:
+                        pass
+
+                if code_val is not None and int(code_val) != 0:
                     h_desc = self.controller.bcap.controller_getvariable(self.controller.h_ctrl, "@ERROR_DESCRIPTION", "")
-                    desc = self.controller.bcap.variable_getvalue(h_desc)
-                    desc = (str(desc) if desc is not None else "").strip()
-                    has_err, stack_msg = True, f"RC8 error {int(code)}: {desc or 'No description'}"
+                    try:
+                        desc_val = self.controller.bcap.variable_getvalue(h_desc)
+                    finally:
+                        try:
+                            self.controller.bcap.variable_release(h_desc)
+                        except Exception:
+                            pass
+
+                    desc = (str(desc_val) if desc_val is not None else "").strip()
+                    has_err, stack_msg = True, f"RC8 error {int(code_val)}: {desc or 'No description'}"
             except Exception:
                 pass
 
@@ -438,7 +494,9 @@ class DensoRC8ControlImpl(DensoRC8ControlBase):
         hr_text = ""
         if isinstance(hr_int, int):
             try:
-                hr_text = self.controller.bcap.controller_execute(self.controller.h_ctrl, "GetErrorDescription", int(hr_int))
+                hr_text = self.controller.bcap.controller_execute(
+                    self.controller.h_ctrl, "GetErrorDescription", int(hr_int)
+                )
                 hr_text = (str(hr_text) if hr_text is not None else "").strip()
             except Exception:
                 hr_text = ""
@@ -462,7 +520,7 @@ class DensoRC8ControlImpl(DensoRC8ControlBase):
                 info = self.controller.bcap.controller_execute(self.controller.h_ctrl, "GetCurErrorInfo", 0)
                 # info: [code, message, subcode, fileIdLine, programName, lineNo, fileId]
                 code = info[0] if len(info) > 0 else None
-                msg  = info[1] if len(info) > 1 else ""
+                msg = info[1] if len(info) > 1 else ""
                 prog = info[4] if len(info) > 4 else ""
                 line = info[5] if len(info) > 5 else ""
                 details = f"RC8 error {code}: {msg}"
