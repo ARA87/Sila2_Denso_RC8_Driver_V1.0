@@ -11,8 +11,6 @@ except ImportError:
 
 
 class DensoRC8Controller:
-
-
     # ---- Konstanten ----
     _STATUS_VAR = "@STATUS"
     _ERR_CODE_VAR = "@ERROR_CODE"
@@ -28,23 +26,14 @@ class DensoRC8Controller:
         # b-CAP Objekte
         self.bcap: Optional[bcapclient.BCAPClient] = None
         self.h_ctrl: Any = None
-        self.Robot: Any = None
+        self.Robot: Any = None  # halten wir als einziges Handle dauerhaft
 
-        # Lazy-Cache für Variablenhandles
-        # z.B. self._var_cache["IO"][1] -> Handle für "IO1"
-        self._var_cache: Dict[str, Dict[int, Any]] = {
-            "IO": {}, "S": {}, "I": {}, "F": {}, "P": {}, "J": {}, "V": {}
-        }
-
-        # Positionshandle (lazy)
-        self._pos_handle: Any = None
-
-        # Task- / Status-Handles
+        # Task- / Status-Handles (werden gecached, aber nicht released)
         self.task_handles: Dict[str, Any] = {}
         self.task_status_vars: Dict[str, Any] = {}
         self.current_program_name: Optional[str] = None
 
-        # Thread-Schutz für Lazy-Caches
+        # Thread-Schutz v. a. für Task-Handles
         self._lock = threading.RLock()
 
     # ---------------------- Verbindung ----------------------
@@ -54,10 +43,15 @@ class DensoRC8Controller:
         self.port = port
         self.timeout = timeout
 
+    def _require(self):
+        if self.bcap is None or self.h_ctrl is None:
+            raise RuntimeError("Controller not started. Call start() first.")
+
     def start(self):
         """
-        Baut NUR die b-CAP Verbindung + Controller-Handle auf.
-        KEIN Preload von Variablen/Roboter/Position (alles lazy).
+        Baut die b-CAP Verbindung + Controller-Handle auf.
+        KEINE Variable-Handles werden global gecached; alle Variablen-Handles
+        werden bei Bedarf pro Zugriff geholt und sofort wieder freigegeben.
         """
         if not all([self.ip, self.port, self.timeout]):
             raise RuntimeError("Connection not configured. Call configure_connection() first.")
@@ -65,7 +59,7 @@ class DensoRC8Controller:
             self.bcap = bcapclient.BCAPClient(host=self.ip, port=self.port, timeout=self.timeout)
             self.bcap.service_start('')
 
-            # Provider/Machine/Option wie in deinem bisherigen Setup (unverändert):
+            # Provider/Machine/Option wie bisher:
             self.h_ctrl = self.bcap.controller_connect(
                 name='',
                 provider='CaoProv.DENSO.VRC',
@@ -73,7 +67,16 @@ class DensoRC8Controller:
                 option=''
             )
 
-            logging.info("Connection started (lazy handle mode).")
+            logging.info("Controller connected (on-demand variable handles, no caching).")
+
+            # Robot-Handle optional lazy holen – wir machen es hier direkt,
+            # behalten aber nur dieses eine Robot-Objekt.
+            try:
+                self.Robot = self.bcap.controller_getrobot(self.h_ctrl, "Arm", "")
+                logging.info("Robot handle initialized.")
+            except ORiNException as e:
+                logging.warning("Could not get Robot handle at startup: %r", e)
+                # Robot wird bei Bedarf in get_pos_value() nachgezogen
 
         except ORiNException as e:
             logging.error(f"ORiNException during startup: {e}")
@@ -84,60 +87,57 @@ class DensoRC8Controller:
             self._log_error_description()
             raise
 
-    # ---------------------- Lazy Helpers ----------------------
+    # ---------------------- kleine Helper für Variablen ----------------------
 
-    def _require(self):
-        if self.bcap is None or self.h_ctrl is None:
-            raise RuntimeError("Controller not started. Call start() first.")
-
-    def _get_robot(self):
+    def _with_controller_variable(self, name: str, op, log_prefix: str = ""):
         """
-        Lazy: holt bei Bedarf das Robot-Handle 'Arm'.
+        Hole einen Controller-Variablenhandle, führe Operation aus, release immer.
+
+        op: Callable(handle) -> Any
         """
         self._require()
-        with self._lock:
-            if self.Robot is None:
-                self.Robot = self.bcap.controller_getrobot(self.h_ctrl, "Arm", "")
-                logging.info("Robot handle resolved lazily.")
-            return self.Robot
-
-    def _get_pos_handle(self):
-        """
-        Lazy: holt bei Bedarf das Positionshandle @CURRENT_POSITION.
-        """
-        self._require()
-        with self._lock:
-            if self._pos_handle is None:
-                robot = self._get_robot()
-                self._pos_handle = self.bcap.robot_getvariable(robot, self._CUR_POS_VAR, '')
-                logging.info("@CURRENT_POSITION handle resolved lazily.")
-            return self._pos_handle
-
-    def _get_var_handle(self, prefix: str, index: int):
-        """
-        Lazy: holt bei Bedarf ein Variablenhandle (IO/S/I/F/P/J/V).
-        """
-        self._require()
-        if prefix not in self._var_cache:
-            raise ValueError(f"Unsupported variable prefix '{prefix}'")
-        with self._lock:
-            cache = self._var_cache[prefix]
-            h = cache.get(index)
-            if h is None:
-                name = f"{prefix}{index}"
-                h = self.bcap.controller_getvariable(self.h_ctrl, name, '')
-                cache[index] = h
-                logging.debug("Handle for %s cached.", name)
-            return h
+        h_var = None
+        try:
+            h_var = self.bcap.controller_getvariable(self.h_ctrl, name, "")
+            return op(h_var)
+        finally:
+            if h_var is not None:
+                try:
+                    self.bcap.variable_release(h_var)
+                except Exception as e:
+                    logging.debug("variable_release(%s) failed: %r", name, e)
 
     # ---------------------- Position ----------------------
 
     def get_pos_value(self) -> List[float]:
-        h = self._get_pos_handle()
-        retval = self.bcap.variable_getvalue(h)
-        logging.info("Current position read: %s", retval)
-        return retval
+        """
+        Liest @CURRENT_POSITION.
+        Robot-Handle wird (falls nicht vorhanden) einmalig geholt und gehalten.
+        Positions-Variable wird pro Aufruf geholt und direkt wieder freigegeben.
+        """
+        self._require()
+        # Robot-Handle lazy nachziehen, falls beim Start fehlschlug
+        if self.Robot is None:
+            try:
+                self.Robot = self.bcap.controller_getrobot(self.h_ctrl, "Arm", "")
+                logging.info("Robot handle resolved lazily in get_pos_value().")
+            except ORiNException as e:
+                logging.error("ORiNException while getting Robot handle: %r", e)
+                self._log_error_description()
+                raise
 
+        h_pos = None
+        try:
+            h_pos = self.bcap.robot_getvariable(self.Robot, self._CUR_POS_VAR, "")
+            retval = self.bcap.variable_getvalue(h_pos)
+            logging.info("Current position read: %s", retval)
+            return retval
+        finally:
+            if h_pos is not None:
+                try:
+                    self.bcap.variable_release(h_pos)
+                except Exception as e:
+                    logging.debug("variable_release(@CURRENT_POSITION) failed: %r", e)
 
     # ---------------------- Task Names ----------------------
 
@@ -147,16 +147,13 @@ class DensoRC8Controller:
         StartProgram (wraps b-CAP Controller_GetTaskNames / CaoController::get_TaskNames).
         """
         self._require()
-        # Erwarteter bCAPClient-Call (analog zu Controller_GetTaskNames)
         raw = self.bcap.controller_gettasknames(self.h_ctrl)
 
-        # raw ist typischerweise eine Python-Liste/tuple aus BSTR/str
         if isinstance(raw, (list, tuple)):
             names = [str(x) for x in raw]
         elif raw is None:
             names = []
         else:
-            # Falls die Library nur einen einzelnen Wert liefert
             names = [str(raw)]
 
         logging.info("Available task names: %s", names)
@@ -165,99 +162,128 @@ class DensoRC8Controller:
     # ---------------------- S values ----------------------
 
     def set_s_value(self, Index: int, value: str):
-        h = self._get_var_handle("S", Index)
-        self.bcap.variable_putvalue(h, value)
-        logging.info("S%d set to: %s", Index, value)
+        name = f"S{Index}"
+        def _op(h):
+            self.bcap.variable_putvalue(h, value)
+            logging.info("%s set to: %s", name, value)
+        self._with_controller_variable(name, _op, log_prefix="S")
 
     def get_s_value(self, Index: int) -> str:
-        h = self._get_var_handle("S", Index)
-        retval = self.bcap.variable_getvalue(h)
-        logging.info("S%d read: %s", Index, retval)
-        return retval
+        name = f"S{Index}"
+        def _op(h):
+            retval = self.bcap.variable_getvalue(h)
+            logging.info("%s read: %s", name, retval)
+            return retval
+        return self._with_controller_variable(name, _op, log_prefix="S")
 
     # ---------------------- I values ----------------------
 
     def set_I_value(self, Index: int, value: int):
-        h = self._get_var_handle("I", Index)
-        self.bcap.variable_putvalue(h, value)
-        logging.info("I%d set to: %s", Index, value)
+        name = f"I{Index}"
+        def _op(h):
+            self.bcap.variable_putvalue(h, value)
+            logging.info("%s set to: %s", name, value)
+        self._with_controller_variable(name, _op, log_prefix="I")
 
     def get_I_value(self, Index: int) -> int:
-        h = self._get_var_handle("I", Index)
-        retval = self.bcap.variable_getvalue(h)
-        logging.info("I%d read: %s", Index, retval)
-        return retval
+        name = f"I{Index}"
+        def _op(h):
+            retval = self.bcap.variable_getvalue(h)
+            logging.info("%s read: %s", name, retval)
+            return retval
+        return self._with_controller_variable(name, _op, log_prefix="I")
 
     # ---------------------- IO values ----------------------
 
     def set_IO_value(self, Index: int, value: int):
-        h = self._get_var_handle("IO", Index)
-        self.bcap.variable_putvalue(h, value)
-        logging.info("IO%d set to: %s", Index, value)
+        name = f"IO{Index}"
+        def _op(h):
+            self.bcap.variable_putvalue(h, value)
+            logging.info("%s set to: %s", name, value)
+        self._with_controller_variable(name, _op, log_prefix="IO")
 
     def get_IO_value(self, Index: int) -> int:
-        h = self._get_var_handle("IO", Index)
-        retval = self.bcap.variable_getvalue(h)
-        logging.info("IO%d read: %s", Index, retval)
-        return retval
+        name = f"IO{Index}"
+        def _op(h):
+            retval = self.bcap.variable_getvalue(h)
+            logging.info("%s read: %s", name, retval)
+            return retval
+        return self._with_controller_variable(name, _op, log_prefix="IO")
 
     # ---------------------- F values ----------------------
 
     def set_F_value(self, Index: int, value: float):
-        h = self._get_var_handle("F", Index)
-        self.bcap.variable_putvalue(h, value)
-        logging.info("F%d set to: %s", Index, value)
+        name = f"F{Index}"
+        def _op(h):
+            self.bcap.variable_putvalue(h, value)
+            logging.info("%s set to: %s", name, value)
+        self._with_controller_variable(name, _op, log_prefix="F")
 
     def get_F_value(self, Index: int) -> float:
-        h = self._get_var_handle("F", Index)
-        retval = self.bcap.variable_getvalue(h)
-        logging.info("F%d read: %s", Index, retval)
-        return retval
+        name = f"F{Index}"
+        def _op(h):
+            retval = self.bcap.variable_getvalue(h)
+            logging.info("%s read: %s", name, retval)
+            return retval
+        return self._with_controller_variable(name, _op, log_prefix="F")
 
     # ---------------------- P values (List of floats) ----------------------
 
     def set_P_value(self, Index: int, value: List[float]):
-        h = self._get_var_handle("P", Index)
-        self.bcap.variable_putvalue(h, value)
-        logging.info("P%d set to: %s", Index, value)
+        name = f"P{Index}"
+        def _op(h):
+            self.bcap.variable_putvalue(h, value)
+            logging.info("%s set to: %s", name, value)
+        self._with_controller_variable(name, _op, log_prefix="P")
 
     def get_P_value(self, Index: int) -> List[float]:
-        h = self._get_var_handle("P", Index)
-        retval = self.bcap.variable_getvalue(h)
-        logging.info("P%d read: %s", Index, retval)
-        return retval
+        name = f"P{Index}"
+        def _op(h):
+            retval = self.bcap.variable_getvalue(h)
+            logging.info("%s read: %s", name, retval)
+            return retval
+        return self._with_controller_variable(name, _op, log_prefix="P")
 
     # ---------------------- J values (List of floats) ----------------------
 
     def set_J_value(self, Index: int, value: List[float]):
-        h = self._get_var_handle("J", Index)
-        self.bcap.variable_putvalue(h, value)
-        logging.info("J%d set to: %s", Index, value)
+        name = f"J{Index}"
+        def _op(h):
+            self.bcap.variable_putvalue(h, value)
+            logging.info("%s set to: %s", name, value)
+        self._with_controller_variable(name, _op, log_prefix="J")
 
     def get_J_value(self, Index: int) -> List[float]:
-        h = self._get_var_handle("J", Index)
-        retval = self.bcap.variable_getvalue(h)
-        logging.info("J%d read: %s", Index, retval)
-        return retval
+        name = f"J{Index}"
+        def _op(h):
+            retval = self.bcap.variable_getvalue(h)
+            logging.info("%s read: %s", name, retval)
+            return retval
+        return self._with_controller_variable(name, _op, log_prefix="J")
 
     # ---------------------- V values (List of floats) ----------------------
 
     def set_V_value(self, Index: int, value: List[float]):
-        h = self._get_var_handle("V", Index)
-        self.bcap.variable_putvalue(h, value)
-        logging.info("V%d set to: %s", Index, value)
+        name = f"V{Index}"
+        def _op(h):
+            self.bcap.variable_putvalue(h, value)
+            logging.info("%s set to: %s", name, value)
+        self._with_controller_variable(name, _op, log_prefix="V")
 
     def get_V_value(self, Index: int) -> List[float]:
-        h = self._get_var_handle("V", Index)
-        retval = self.bcap.variable_getvalue(h)
-        logging.info("V%d read: %s", Index, retval)
-        return retval
+        name = f"V{Index}"
+        def _op(h):
+            retval = self.bcap.variable_getvalue(h)
+            logging.info("%s read: %s", name, retval)
+            return retval
+        return self._with_controller_variable(name, _op, log_prefix="V")
 
     # ---------------------- Programme / Tasks ----------------------
 
     def get_program(self, program_name: str):
         """
-        Handle + @STATUS binden, Cache nutzen. Keine weitere Vorab-Logik.
+        Handle + @STATUS binden, Cache nutzen.
+        (Task-Handles bleiben gecached; die Anzahl ist typischerweise klein.)
         """
         self._require()
         if program_name.lower().endswith(".pcs"):
@@ -356,7 +382,13 @@ class DensoRC8Controller:
                 logging.warning("No Controller-Handle for Error Message.")
                 return
             h_desc = self.bcap.controller_getvariable(self.h_ctrl, self._ERR_DESC_VAR, "")
-            msg = self.bcap.variable_getvalue(h_desc)
+            try:
+                msg = self.bcap.variable_getvalue(h_desc)
+            finally:
+                try:
+                    self.bcap.variable_release(h_desc)
+                except Exception:
+                    pass
             if msg:
                 logging.error("RC8 %s: %s", self._ERR_DESC_VAR, msg)
             else:
@@ -368,15 +400,10 @@ class DensoRC8Controller:
 
     def invalidate_variable_cache(self, prefix: Optional[str] = None):
         """
-        Löscht den Cache für Variablenhandles (z. B. nach Controller-Reset).
+        Für das neue Design ohne Variablen-Cache praktisch ein No-Op.
+        Bleibt nur drin, falls von außen aufgerufen wird.
         """
-        with self._lock:
-            if prefix is None:
-                for k in self._var_cache:
-                    self._var_cache[k].clear()
-            else:
-                if prefix in self._var_cache:
-                    self._var_cache[prefix].clear()
+        logging.info("invalidate_variable_cache(%r) called – no cached variable handles in this design.", prefix)
 
     def invalidate_program_cache(self, program_name: Optional[str] = None):
         with self._lock:
